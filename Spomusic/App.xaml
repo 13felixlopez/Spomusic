@@ -1,0 +1,31 @@
+<?xml version = "1.0" encoding = "UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:Spomusic"
+             xmlns:converters="clr-namespace:Spomusic.Converters"
+             x:Class="Spomusic.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
+                <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            
+            <converters:ByteArrayToImageSourceConverter x:Key="ByteArrayToImageSourceConverter" />
+            <converters:FavoriteColorConverter x:Key="FavoriteColorConverter" />
+            <converters:IsNotNullConverter x:Key="IsNotNullConverter" />
+            <converters:TimeSecondsConverter x:Key="TimeSecondsConverter" />
+            <converters:ShuffleColorConverter x:Key="ShuffleColorConverter" />
+            <converters:RepeatIconConverter x:Key="RepeatIconConverter" />
+            <converters:RepeatColorConverter x:Key="RepeatColorConverter" />
+            <converters:IsRepeatOneConverter x:Key="IsRepeatOneConverter" />
+            <converters:LyricHighlightConverter x:Key="LyricHighlightConverter" />
+            <converters:LyricOpacityConverter x:Key="LyricOpacityConverter" />
+            <converters:LyricLineColorMultiConverter x:Key="LyricLineColorMultiConverter" />
+            <converters:LyricLineOpacityMultiConverter x:Key="LyricLineOpacityMultiConverter" />
+            <converters:LyricLineScaleMultiConverter x:Key="LyricLineScaleMultiConverter" />
+            <converters:HexColorConverter x:Key="HexColorConverter" />
+            <converters:KaraokeLineFormattedMultiConverter x:Key="KaraokeLineFormattedMultiConverter" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
