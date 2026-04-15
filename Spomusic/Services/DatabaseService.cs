@@ -75,6 +75,15 @@ namespace Spomusic.Services
         public long UpdatedUtcTicks { get; set; }
     }
 
+    public class ScanFolderPreference
+    {
+        [PrimaryKey]
+        public string FolderPath { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public bool IsSelected { get; set; }
+        public long UpdatedUtcTicks { get; set; }
+    }
+
     public sealed class DatabaseService
     {
         private SQLiteAsyncConnection? _database;
@@ -98,9 +107,14 @@ namespace Spomusic.Services
             await _database.CreateTableAsync<PlaybackResumeState>();
             await _database.CreateTableAsync<LyricTimingOverride>();
             await _database.CreateTableAsync<KaraokePreset>();
+            await _database.CreateTableAsync<Playlist>();
+            await _database.CreateTableAsync<PlaylistSong>();
+            await _database.CreateTableAsync<ScanFolderPreference>();
 
             await EnsureColumnAsync("SongItem", "Genre", "TEXT NOT NULL DEFAULT 'Unknown'");
             await EnsureColumnAsync("SongItem", "AccentColorHex", "TEXT NOT NULL DEFAULT '#1DB954'");
+            await EnsureColumnAsync("SongItem", "FolderPath", "TEXT NOT NULL DEFAULT ''");
+            await EnsureColumnAsync("SongItem", "SearchIndex", "TEXT NOT NULL DEFAULT ''");
             await EnsureColumnAsync("LyricCache", "LastFetchedUtcTicks", "INTEGER NOT NULL DEFAULT 0");
             await EnsureColumnAsync("LyricCache", "ExpiresUtcTicks", "INTEGER NOT NULL DEFAULT 0");
         }
@@ -118,6 +132,158 @@ namespace Spomusic.Services
         {
             await Init();
             return await _database!.UpdateAsync(song);
+        }
+
+        public async Task<List<SongItem>> GetSongsAsync()
+        {
+            await Init();
+            return await _database!.Table<SongItem>().OrderBy(x => x.Title).ToListAsync();
+        }
+
+        public async Task ReplaceSongsAsync(IEnumerable<SongItem> songs)
+        {
+            await Init();
+            var incoming = songs.ToList();
+            var existing = await _database!.Table<SongItem>().ToListAsync();
+            var existingByPath = existing
+                .Where(x => !string.IsNullOrWhiteSpace(x.Path))
+                .ToDictionary(x => x.Path, StringComparer.OrdinalIgnoreCase);
+
+            await _database.RunInTransactionAsync(connection =>
+            {
+                connection.DeleteAll<SongItem>();
+
+                foreach (var song in incoming)
+                {
+                    if (existingByPath.TryGetValue(song.Path, out var prior))
+                    {
+                        song.Id = prior.Id;
+                        song.IsFavorite = prior.IsFavorite;
+                        if (song.AlbumArt == null)
+                            song.AlbumArt = prior.AlbumArt;
+                        if (string.IsNullOrWhiteSpace(song.AccentColorHex))
+                            song.AccentColorHex = prior.AccentColorHex;
+                    }
+
+                    connection.Insert(song);
+                }
+            });
+        }
+
+        public async Task UpsertScanFoldersAsync(IEnumerable<ScanFolderItem> folders)
+        {
+            await Init();
+            var now = DateTime.UtcNow.Ticks;
+            foreach (var folder in folders)
+            {
+                var row = await _database!.Table<ScanFolderPreference>()
+                    .FirstOrDefaultAsync(x => x.FolderPath == folder.Path);
+
+                if (row == null)
+                {
+                    await _database.InsertAsync(new ScanFolderPreference
+                    {
+                        FolderPath = folder.Path,
+                        DisplayName = folder.DisplayName,
+                        IsSelected = folder.IsSelected,
+                        UpdatedUtcTicks = now
+                    });
+                    continue;
+                }
+
+                row.DisplayName = folder.DisplayName;
+                row.IsSelected = folder.IsSelected;
+                row.UpdatedUtcTicks = now;
+                await _database.UpdateAsync(row);
+            }
+        }
+
+        public async Task<List<ScanFolderItem>> GetScanFoldersAsync()
+        {
+            await Init();
+            var rows = await _database!.Table<ScanFolderPreference>()
+                .OrderBy(x => x.DisplayName)
+                .ToListAsync();
+
+            return rows.Select(x => new ScanFolderItem
+            {
+                Path = x.FolderPath,
+                DisplayName = x.DisplayName,
+                IsSelected = x.IsSelected
+            }).ToList();
+        }
+
+        public async Task<List<string>> GetSelectedScanFolderPathsAsync()
+        {
+            await Init();
+            var rows = await _database!.Table<ScanFolderPreference>()
+                .Where(x => x.IsSelected)
+                .ToListAsync();
+
+            return rows.Select(x => x.FolderPath).ToList();
+        }
+
+        public async Task SaveSelectedScanFoldersAsync(IEnumerable<ScanFolderItem> folders)
+            => await UpsertScanFoldersAsync(folders);
+
+        public async Task<int> CreatePlaylistAsync(string name)
+        {
+            await Init();
+            var playlist = new Playlist { Name = name.Trim() };
+            await _database!.InsertAsync(playlist);
+            return playlist.Id;
+        }
+
+        public async Task<List<Playlist>> GetPlaylistsAsync()
+        {
+            await Init();
+            return await _database!.Table<Playlist>().OrderBy(x => x.Name).ToListAsync();
+        }
+
+        public async Task DeletePlaylistAsync(int playlistId)
+        {
+            await Init();
+            var playlist = await _database!.Table<Playlist>().FirstOrDefaultAsync(x => x.Id == playlistId);
+            if (playlist != null)
+                await _database.DeleteAsync(playlist);
+
+            var playlistSongs = await _database.Table<PlaylistSong>().Where(x => x.PlaylistId == playlistId).ToListAsync();
+            foreach (var row in playlistSongs)
+                await _database.DeleteAsync(row);
+        }
+
+        public async Task AddSongToPlaylistAsync(int playlistId, int songId)
+        {
+            await Init();
+            var exists = await _database!.Table<PlaylistSong>()
+                .FirstOrDefaultAsync(x => x.PlaylistId == playlistId && x.SongId == songId);
+            if (exists != null) return;
+
+            await _database.InsertAsync(new PlaylistSong
+            {
+                PlaylistId = playlistId,
+                SongId = songId
+            });
+        }
+
+        public async Task RemoveSongFromPlaylistAsync(int playlistId, int songId)
+        {
+            await Init();
+            var row = await _database!.Table<PlaylistSong>()
+                .FirstOrDefaultAsync(x => x.PlaylistId == playlistId && x.SongId == songId);
+            if (row != null)
+                await _database.DeleteAsync(row);
+        }
+
+        public async Task<List<SongItem>> GetSongsForPlaylistAsync(int playlistId)
+        {
+            await Init();
+            var songs = await _database!.QueryAsync<SongItem>(
+                @"SELECT s.* FROM SongItem s
+                  INNER JOIN PlaylistSong ps ON ps.SongId = s.Id
+                  WHERE ps.PlaylistId = ?
+                  ORDER BY ps.Id", playlistId);
+            return songs;
         }
 
         public async Task SaveLyricsAsync(string songKey, string rawLrc, bool isDownloaded, TimeSpan? ttl = null)

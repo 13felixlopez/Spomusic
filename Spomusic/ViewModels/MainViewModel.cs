@@ -11,12 +11,18 @@ namespace Spomusic.ViewModels
         private readonly IMusicService _musicService;
         private readonly MusicScannerService _scannerService;
         private readonly DatabaseService _databaseService;
+        private CancellationTokenSource? _searchCts;
+        private bool _hasInitialized;
 
         [ObservableProperty] private ObservableCollection<SongItem> _songs = new();
         [ObservableProperty] private ObservableCollection<SongItem> _filteredSongs = new();
         [ObservableProperty] private ObservableCollection<SongItem> _recommendedSongs = new();
         [ObservableProperty] private ObservableCollection<SongItem> _continueListeningSongs = new();
+        [ObservableProperty] private ObservableCollection<ScanFolderItem> _scanFolders = new();
+        [ObservableProperty] private ObservableCollection<Playlist> _playlists = new();
+        [ObservableProperty] private ObservableCollection<SongItem> _activePlaylistSongs = new();
         [ObservableProperty] private SongItem? _currentSong;
+        [ObservableProperty] private Playlist? _activePlaylist;
         [ObservableProperty] private bool _isPlaying;
         [ObservableProperty] private double _currentPosition;
         [ObservableProperty] private double _duration;
@@ -34,6 +40,8 @@ namespace Spomusic.ViewModels
         [ObservableProperty] private bool _isScanning;
         [ObservableProperty] private bool _isDiscoverPanelOpen;
         [ObservableProperty] private bool _isQueuePanelOpen;
+        [ObservableProperty] private bool _isFolderPanelOpen;
+        [ObservableProperty] private bool _isPlaylistPanelOpen;
         [ObservableProperty] private bool _isFocusMode;
         [ObservableProperty] private int _lyricLeadMs = 650;
         [ObservableProperty] private bool _isReducedMotion;
@@ -50,6 +58,25 @@ namespace Spomusic.ViewModels
         [ObservableProperty] private string _lyricSyncQualityColor = "#FF8A80";
 
         public bool IsNotFocusMode => !IsFocusMode;
+        public int TotalSongs => Songs.Count;
+        public int FavoriteSongsCount => Songs.Count(s => s.IsFavorite);
+        public int ArtistCount => Songs
+            .Select(s => s.Artist)
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        public string ActiveFilterLabel => ShowOnlyFavorites ? $"{SearchScope} + Favoritos" : SearchScope;
+        public string LibrarySummary => IsScanning
+            ? "Sincronizando tu biblioteca local."
+            : TotalSongs == 0
+                ? "Explora tu música descargada y construye una biblioteca propia."
+                : $"{FilteredSongs.Count} de {TotalSongs} canciones visibles en {ActiveFilterLabel}.";
+        public bool HasLibraryContent => TotalSongs > 0;
+        public bool HasScanFolders => ScanFolders.Count > 0;
+        public bool HasPlaylists => Playlists.Count > 0;
+        public string PlaylistSummary => ActivePlaylist == null
+            ? $"{Playlists.Count} listas creadas"
+            : $"{ActivePlaylistSongs.Count} canciones en {ActivePlaylist.Name}";
 
         public event Action<int>? RequestScrollToLyric;
 
@@ -102,16 +129,36 @@ namespace Spomusic.ViewModels
                 });
             };
 
-            Task.Run(async () =>
+        }
+
+        [RelayCommand]
+        public async Task InitializeAsync()
+        {
+            if (_hasInitialized) return;
+            _hasInitialized = true;
+
+            var cachedSongs = await _databaseService.GetSongsAsync();
+            var savedFolders = await _databaseService.GetScanFoldersAsync();
+            var availableFolders = await _scannerService.GetAvailableMusicFoldersAsync();
+            var playlists = await _databaseService.GetPlaylistsAsync();
+            var folderOptions = _scannerService.BuildFolderOptions(availableFolders, savedFolders);
+
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                await LoadSongsAsync();
-                await LoadRecommendationsAsync();
-                await LoadContinueListeningAsync();
-                MainThread.BeginInvokeOnMainThread(() =>
+                Songs = new ObservableCollection<SongItem>(cachedSongs);
+                ScanFolders = new ObservableCollection<ScanFolderItem>(folderOptions);
+                Playlists = new ObservableCollection<Playlist>(playlists);
+                ApplySearchFilterCore();
+                if (cachedSongs.Count > 0)
                 {
+                    _musicService.SetPlaylist(cachedSongs.ToList());
                     QueueSongs = new ObservableCollection<SongItem>(_musicService.GetQueueSnapshot());
-                });
+                }
             });
+
+            await LoadRecommendationsAsync();
+            await LoadContinueListeningAsync();
+            await LoadSongsAsync();
         }
 
         [RelayCommand]
@@ -121,18 +168,28 @@ namespace Spomusic.ViewModels
             IsScanning = true;
             try
             {
-                var scannedSongs = await _scannerService.ScanSongsAsync();
+                var selectedFolders = ScanFolders.Where(x => x.IsSelected).Select(x => x.Path).ToList();
+                var availableFolders = await _scannerService.GetAvailableMusicFoldersAsync();
+                var scannedSongs = await _scannerService.ScanSongsAsync(selectedFolders);
+                var folderOptions = _scannerService.BuildFolderOptions(availableFolders, ScanFolders);
+                await _databaseService.ReplaceSongsAsync(scannedSongs);
+                await _databaseService.UpsertScanFoldersAsync(folderOptions);
+
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     Songs = new ObservableCollection<SongItem>(scannedSongs);
-                    ApplySearchFilter();
+                    ScanFolders = new ObservableCollection<ScanFolderItem>(folderOptions);
+                    ApplySearchFilterCore();
                     if (scannedSongs.Count > 0)
                     {
                         _musicService.SetPlaylist(scannedSongs.ToList());
                         QueueSongs = new ObservableCollection<SongItem>(_musicService.GetQueueSnapshot());
                     }
                 });
+
+                await LoadPlaylistsAsync();
                 await LoadContinueListeningAsync();
+                await LoadRecommendationsAsync();
             }
             finally
             {
@@ -152,14 +209,14 @@ namespace Spomusic.ViewModels
         public void SetSearchScope(string scope)
         {
             SearchScope = scope;
-            ApplySearchFilter();
+            ApplySearchFilterCore();
         }
 
         [RelayCommand]
         public void ToggleFavoritesOnly()
         {
             ShowOnlyFavorites = !ShowOnlyFavorites;
-            ApplySearchFilter();
+            ApplySearchFilterCore();
         }
 
         [RelayCommand]
@@ -169,11 +226,36 @@ namespace Spomusic.ViewModels
         public void ToggleQueuePanel() => IsQueuePanelOpen = !IsQueuePanelOpen;
 
         [RelayCommand]
+        public void ToggleFolderPanel() => IsFolderPanelOpen = !IsFolderPanelOpen;
+
+        [RelayCommand]
+        public void TogglePlaylistPanel() => IsPlaylistPanelOpen = !IsPlaylistPanelOpen;
+
+        [RelayCommand]
         public void ToggleFocusMode() => IsFocusMode = !IsFocusMode;
 
-        partial void OnSearchTextChanged(string value) => ApplySearchFilter();
-        partial void OnShowOnlyFavoritesChanged(bool value) => ApplySearchFilter();
-        partial void OnSearchScopeChanged(string value) => ApplySearchFilter();
+        partial void OnSongsChanged(ObservableCollection<SongItem> value) => NotifyLibraryInsightsChanged();
+        partial void OnFilteredSongsChanged(ObservableCollection<SongItem> value) => NotifyLibraryInsightsChanged();
+        partial void OnScanFoldersChanged(ObservableCollection<ScanFolderItem> value) => NotifyLibraryInsightsChanged();
+        partial void OnPlaylistsChanged(ObservableCollection<Playlist> value) => NotifyLibraryInsightsChanged();
+        partial void OnActivePlaylistChanged(Playlist? value) => NotifyLibraryInsightsChanged();
+        partial void OnActivePlaylistSongsChanged(ObservableCollection<SongItem> value) => NotifyLibraryInsightsChanged();
+        partial void OnIsScanningChanged(bool value) => NotifyLibraryInsightsChanged();
+        partial void OnSearchTextChanged(string value)
+        {
+            DebounceFilter();
+            NotifyLibraryInsightsChanged();
+        }
+        partial void OnShowOnlyFavoritesChanged(bool value)
+        {
+            ApplySearchFilterCore();
+            NotifyLibraryInsightsChanged();
+        }
+        partial void OnSearchScopeChanged(string value)
+        {
+            ApplySearchFilterCore();
+            NotifyLibraryInsightsChanged();
+        }
 
         [RelayCommand]
         public void IncreaseLyricsFontSize() => LyricsFontSize = Math.Min(52, LyricsFontSize + 2);
@@ -287,8 +369,60 @@ namespace Spomusic.ViewModels
             await _databaseService.UpdateSongAsync(song);
             await _databaseService.RecordPlaybackEventAsync($"{song.Title}_{song.Artist}", "favorite");
             OnPropertyChanged(nameof(Songs));
-            ApplySearchFilter();
+            ApplySearchFilterCore();
+            NotifyLibraryInsightsChanged();
             await LoadRecommendationsAsync();
+        }
+
+        [RelayCommand]
+        public async Task SaveFolderSelectionAsync()
+        {
+            await _databaseService.SaveSelectedScanFoldersAsync(ScanFolders);
+            IsFolderPanelOpen = false;
+            await LoadSongsAsync();
+        }
+
+        [RelayCommand]
+        public async Task LoadPlaylistsAsync()
+        {
+            var playlists = await _databaseService.GetPlaylistsAsync();
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                Playlists = new ObservableCollection<Playlist>(playlists);
+            });
+        }
+
+        public async Task CreatePlaylistAsync(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return;
+            await _databaseService.CreatePlaylistAsync(name);
+            await LoadPlaylistsAsync();
+        }
+
+        public async Task AddSongToPlaylistAsync(SongItem song, Playlist playlist)
+        {
+            if (song.Id == 0 || playlist.Id == 0) return;
+            await _databaseService.AddSongToPlaylistAsync(playlist.Id, song.Id);
+            if (ActivePlaylist?.Id == playlist.Id)
+                await OpenPlaylistAsync(playlist);
+        }
+
+        public async Task OpenPlaylistAsync(Playlist playlist)
+        {
+            var songs = await _databaseService.GetSongsForPlaylistAsync(playlist.Id);
+            ActivePlaylist = playlist;
+            ActivePlaylistSongs = new ObservableCollection<SongItem>(songs);
+        }
+
+        public void PlayPlaylist(Playlist playlist)
+        {
+            var songs = ActivePlaylistSongs;
+            if (ActivePlaylist?.Id != playlist.Id || songs.Count == 0)
+                return;
+
+            _musicService.SetPlaylist(songs.ToList());
+            QueueSongs = new ObservableCollection<SongItem>(_musicService.GetQueueSnapshot());
+            _musicService.Play(songs[0]);
         }
 
         public void Seek(double value) => _musicService.SeekTo(TimeSpan.FromSeconds(value));
@@ -302,29 +436,67 @@ namespace Spomusic.ViewModels
         partial void OnIsHighContrastLyricsChanged(bool value) => _ = SaveCurrentKaraokePresetAsync();
         partial void OnIsFocusModeChanged(bool value) => OnPropertyChanged(nameof(IsNotFocusMode));
 
-        private void ApplySearchFilter()
+        private void DebounceFilter()
         {
-            IEnumerable<SongItem> query = Songs;
+            _searchCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _searchCts = cts;
 
-            if (ShowOnlyFavorites)
-                query = query.Where(s => s.IsFavorite);
-
-            if (!string.IsNullOrWhiteSpace(SearchText))
+            _ = Task.Run(async () =>
             {
-                query = query.Where(song => SearchScope switch
+                try
                 {
-                    "Artista" => Contains(song.Artist, SearchText),
-                    "Álbum" => Contains(song.Album, SearchText),
-                    "Género" => Contains(song.Genre, SearchText),
-                    _ => Contains(song.Title, SearchText) || Contains(song.Artist, SearchText) || Contains(song.Album, SearchText) || Contains(song.Genre, SearchText)
-                });
-            }
+                    await Task.Delay(140, cts.Token);
+                    if (cts.IsCancellationRequested) return;
+                    ApplySearchFilterCore();
+                }
+                catch (TaskCanceledException)
+                {
+                }
+            });
+        }
 
-            FilteredSongs = new ObservableCollection<SongItem>(query);
+        private void ApplySearchFilterCore()
+        {
+            var allSongs = Songs.ToList();
+            var text = Normalize(SearchText);
+            var scope = SearchScope;
+            var onlyFavorites = ShowOnlyFavorites;
+
+            _ = Task.Run(() =>
+            {
+                IEnumerable<SongItem> query = allSongs;
+
+                if (onlyFavorites)
+                    query = query.Where(s => s.IsFavorite);
+
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    query = query.Where(song => scope switch
+                    {
+                        "Artista" => Normalize(song.Artist).Contains(text, StringComparison.Ordinal),
+                        "Álbum" => Normalize(song.Album).Contains(text, StringComparison.Ordinal),
+                        "Género" => Normalize(song.Genre).Contains(text, StringComparison.Ordinal),
+                        _ => (song.SearchIndex.Length == 0 ? BuildSearchIndex(song) : song.SearchIndex).Contains(text, StringComparison.Ordinal)
+                    });
+                }
+
+                var result = query.ToList();
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    FilteredSongs = new ObservableCollection<SongItem>(result);
+                });
+            });
         }
 
         private static bool Contains(string value, string text)
             => value?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false;
+
+        private static string Normalize(string? value)
+            => value?.Trim().ToUpperInvariant() ?? string.Empty;
+
+        private static string BuildSearchIndex(SongItem song)
+            => Normalize($"{song.Title} {song.Artist} {song.Album} {song.Genre} {song.FolderPath}");
 
         private void BuildWordProgressFormattedLyric()
         {
@@ -475,6 +647,19 @@ namespace Spomusic.ViewModels
             {
                 // Non-blocking UX feature.
             }
+        }
+
+        private void NotifyLibraryInsightsChanged()
+        {
+            OnPropertyChanged(nameof(TotalSongs));
+            OnPropertyChanged(nameof(FavoriteSongsCount));
+            OnPropertyChanged(nameof(ArtistCount));
+            OnPropertyChanged(nameof(ActiveFilterLabel));
+            OnPropertyChanged(nameof(LibrarySummary));
+            OnPropertyChanged(nameof(HasLibraryContent));
+            OnPropertyChanged(nameof(HasScanFolders));
+            OnPropertyChanged(nameof(HasPlaylists));
+            OnPropertyChanged(nameof(PlaylistSummary));
         }
     }
 }

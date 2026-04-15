@@ -13,6 +13,8 @@ namespace Spomusic.Models
         public string Genre { get; set; } = "Unknown";
         public string AccentColorHex { get; set; } = "#1DB954";
         public string Path { get; set; } = string.Empty;
+        public string FolderPath { get; set; } = string.Empty;
+        public string SearchIndex { get; set; } = string.Empty;
         public TimeSpan Duration { get; set; }
         public byte[]? AlbumArt { get; set; }
 
@@ -33,5 +35,14 @@ namespace Spomusic.Models
         public int Id { get; set; }
         public int PlaylistId { get; set; }
         public int SongId { get; set; }
+    }
+
+    public partial class ScanFolderItem : ObservableObject
+    {
+        public string Path { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+
+        [ObservableProperty]
+        private bool _isSelected;
     }
 }

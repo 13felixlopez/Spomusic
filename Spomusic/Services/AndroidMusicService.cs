@@ -327,6 +327,7 @@ namespace Spomusic.Services
             _timer?.Stop();
             OnPlaybackStatusChanged?.Invoke(false);
             _ = PersistResumePositionAsync(CurrentPosition);
+            if (CurrentSong != null) UpdateNotification(CurrentSong, false);
         }
 
         public void SeekTo(TimeSpan position) => _mediaPlayer?.SeekTo((int)position.TotalMilliseconds);
@@ -659,6 +660,7 @@ namespace Spomusic.Services
             var art = song.AlbumArt ?? _scanner.GetAlbumArt(song.Path);
             if (art != null) intent.PutExtra("albumArt", art);
             context.StartForegroundService(intent);
+            Spomusic.Platforms.Android.SpomusicAppWidget.UpdateNowPlaying(context, song.Title, song.Artist, isPlaying);
         }
 
         private void NotifyQueueChanged()

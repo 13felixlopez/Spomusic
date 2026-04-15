@@ -8,6 +8,15 @@
     <Color x:Key="SpotifyBlack">#121212</Color>
     <Color x:Key="SpotifyGray">#282828</Color>
     <Color x:Key="SpotifyLightGray">#B3B3B3</Color>
+    <Color x:Key="SpotifySurface">#181818</Color>
+    <Color x:Key="SpotifySurfaceElevated">#202020</Color>
+    <Color x:Key="SpotifySurfaceAlt">#242424</Color>
+    <Color x:Key="SpotifyStroke">#2D2D2D</Color>
+    <Color x:Key="SpotifyMuted">#8C8C8C</Color>
+    <Color x:Key="SpotifyChipActive">#233528</Color>
+    <Color x:Key="SpotifyChipStroke">#36553F</Color>
+    <Color x:Key="SpotifyHeroTop">#1C3A2A</Color>
+    <Color x:Key="SpotifyHeroBottom">#121212</Color>
 
     <Color x:Key="Primary">#1DB954</Color>
     <Color x:Key="PrimaryDark">#191414</Color>
