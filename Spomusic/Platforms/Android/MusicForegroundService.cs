@@ -2,6 +2,7 @@ using Android.App;
 using Android.Content;
 using Android.OS;
 using Android.Runtime;
+using Android.Support.V4.Media;
 using Android.Support.V4.Media.Session;
 using AndroidX.Core.App;
 using Spomusic.Models;
@@ -21,6 +22,8 @@ namespace Spomusic.Platforms.Android
         public const string ActionPause = "ACTION_PAUSE";
         public const string ActionNext = "ACTION_NEXT";
         public const string ActionPrev = "ACTION_PREV";
+        public const string ActionStop = "ACTION_STOP";
+        public const string ActionClose = "ACTION_CLOSE";
 
         public override IBinder? OnBind(Intent? intent) => null;
 
@@ -29,6 +32,7 @@ namespace Spomusic.Platforms.Android
             base.OnCreate();
             CreateNotificationChannel();
             _mediaSession = new MediaSessionCompat(this, "Spomusic");
+            _mediaSession.Active = true;
         }
 
         private void CreateNotificationChannel()
@@ -53,6 +57,16 @@ namespace Spomusic.Platforms.Android
                     case ActionPause: musicService?.Pause(); break;
                     case ActionNext: musicService?.Next(); break;
                     case ActionPrev: musicService?.Previous(); break;
+                    case ActionStop:
+                        musicService?.Stop();
+                        StopForeground(StopForegroundFlags.Remove);
+                        StopSelf();
+                        return StartCommandResult.NotSticky;
+                    case ActionClose:
+                        musicService?.Stop();
+                        StopForeground(StopForegroundFlags.Remove);
+                        StopSelf();
+                        return StartCommandResult.NotSticky;
                 }
             }
 
@@ -60,11 +74,18 @@ namespace Spomusic.Platforms.Android
             var artist = intent?.GetStringExtra("artist") ?? "Escuchando ahora";
             var isPlaying = intent?.GetBooleanExtra("isPlaying", true) ?? true;
             var albumArtBytes = intent?.GetByteArrayExtra("albumArt");
+            var durationMs = intent?.GetLongExtra("durationMs", 0) ?? 0;
+            var positionMs = intent?.GetLongExtra("positionMs", 0) ?? 0;
 
             // Intent to open the app when tapping the notification
             var mainIntent = new Intent(this, typeof(MainActivity));
             mainIntent.AddFlags(ActivityFlags.ClearTop | ActivityFlags.SingleTop);
             var pendingMainIntent = PendingIntent.GetActivity(this, 0, mainIntent, PendingIntentFlags.Immutable);
+            _mediaSession?.SetSessionActivity(pendingMainIntent);
+
+            // Lock-screen controls depend on a live media session with current
+            // metadata and playback state, not just on a foreground notification.
+            UpdateMediaSession(title, artist, albumArtBytes, durationMs, positionMs, isPlaying);
 
             var builder = new NotificationCompat.Builder(this, ChannelId)
                 .SetContentTitle(title)
@@ -72,10 +93,12 @@ namespace Spomusic.Platforms.Android
                 .SetSmallIcon(global::Android.Resource.Drawable.IcMediaPlay)
                 .SetContentIntent(pendingMainIntent)
                 .SetOngoing(isPlaying)
+                .SetOnlyAlertOnce(true)
+                .SetCategory(NotificationCompat.CategoryTransport)
                 .SetVisibility(NotificationCompat.VisibilityPublic)
                 .SetStyle(new AndroidX.Media.App.NotificationCompat.MediaStyle()
                     .SetMediaSession(_mediaSession?.SessionToken)
-                    .SetShowActionsInCompactView(0, 1, 2));
+                    .SetShowActionsInCompactView(0, 1, 2, 3));
 
             if (albumArtBytes != null)
             {
@@ -95,6 +118,9 @@ namespace Spomusic.Platforms.Android
             // Next Action
             builder.AddAction(global::Android.Resource.Drawable.IcMediaNext, "Next", GetPendingIntent(ActionNext));
 
+            // Close Action
+            builder.AddAction(global::Android.Resource.Drawable.IcMenuCloseClearCancel, "Cerrar", GetPendingIntent(ActionClose));
+
             var notification = builder.Build();
             StartForeground(NotificationId, notification);
 
@@ -105,7 +131,45 @@ namespace Spomusic.Platforms.Android
         {
             var intent = new Intent(this, typeof(MusicForegroundService));
             intent.SetAction(action);
-            return PendingIntent.GetService(this, 0, intent, PendingIntentFlags.Immutable);
+            return PendingIntent.GetService(this, action.GetHashCode(), intent, PendingIntentFlags.Immutable);
+        }
+
+        private void UpdateMediaSession(string title, string artist, byte[]? albumArtBytes, long durationMs, long positionMs, bool isPlaying)
+        {
+            if (_mediaSession == null)
+                return;
+
+            var metadataBuilder = new MediaMetadataCompat.Builder()
+                .PutString(MediaMetadataCompat.MetadataKeyTitle, title)
+                .PutString(MediaMetadataCompat.MetadataKeyArtist, artist)
+                .PutLong(MediaMetadataCompat.MetadataKeyDuration, durationMs);
+
+            if (albumArtBytes != null)
+            {
+                var bitmap = BitmapFactory.DecodeByteArray(albumArtBytes, 0, albumArtBytes.Length);
+                if (bitmap != null)
+                    metadataBuilder.PutBitmap(MediaMetadataCompat.MetadataKeyAlbumArt, bitmap);
+            }
+
+            _mediaSession.SetMetadata(metadataBuilder.Build());
+
+            var availableActions =
+                PlaybackStateCompat.ActionPlay |
+                PlaybackStateCompat.ActionPause |
+                PlaybackStateCompat.ActionPlayPause |
+                PlaybackStateCompat.ActionSkipToNext |
+                PlaybackStateCompat.ActionSkipToPrevious |
+                PlaybackStateCompat.ActionStop;
+
+            var playbackState = new PlaybackStateCompat.Builder()
+                .SetActions(availableActions)
+                .SetState(
+                    isPlaying ? PlaybackStateCompat.StatePlaying : PlaybackStateCompat.StatePaused,
+                    Math.Max(0, positionMs),
+                    isPlaying ? 1f : 0f)
+                .Build();
+
+            _mediaSession.SetPlaybackState(playbackState);
         }
 
         public override void OnDestroy()

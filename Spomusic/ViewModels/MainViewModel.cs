@@ -56,8 +56,10 @@ namespace Spomusic.ViewModels
         [ObservableProperty] private SongItem? _draggingQueueSong;
         [ObservableProperty] private string _lyricSyncQuality = "Baja";
         [ObservableProperty] private string _lyricSyncQualityColor = "#FF8A80";
+        [ObservableProperty] private string _sleepTimerStatus = string.Empty;
 
         public bool IsNotFocusMode => !IsFocusMode;
+        public bool HasSleepTimer => !string.IsNullOrWhiteSpace(SleepTimerStatus);
         public int TotalSongs => Songs.Count;
         public int FavoriteSongsCount => Songs.Count(s => s.IsFavorite);
         public int ArtistCount => Songs
@@ -87,10 +89,25 @@ namespace Spomusic.ViewModels
             _databaseService = databaseService;
             IsReducedMotion = DeviceInfo.Platform == DevicePlatform.Android && DeviceInfo.Version.Major <= 9;
             LyricLeadMs = _musicService.LyricLeadMs;
+            IsShuffle = _musicService.IsShuffle;
+
+            RepeatMode = _musicService.RepeatMode;
 
             _musicService.OnSongChanged += song =>
             {
                 CurrentSong = song;
+                if (song == null)
+                {
+                    CurrentPosition = 0;
+                    Duration = 0;
+                    CurrentLyricLine = null;
+                    CurrentLyricIndex = -1;
+                    CurrentLyricWordProgress = 0;
+                    CurrentLyricFormatted = null;
+                    FullLyrics = new ObservableCollection<LyricLine>();
+                    return;
+                }
+
                 Duration = song.Duration.TotalSeconds;
                 FullLyrics = new ObservableCollection<LyricLine>(_musicService.CurrentLyrics);
                 BuildWordProgressFormattedLyric();
@@ -126,6 +143,17 @@ namespace Spomusic.ViewModels
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
                     QueueSongs = new ObservableCollection<SongItem>(queue);
+                });
+            };
+
+            _musicService.OnSleepTimerChanged += remaining =>
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    SleepTimerStatus = remaining.HasValue
+                        ? $"Dormir en {remaining.Value:mm\\:ss}"
+                        : string.Empty;
+                    OnPropertyChanged(nameof(HasSleepTimer));
                 });
             };
 
@@ -342,6 +370,9 @@ namespace Spomusic.ViewModels
             else _musicService.Resume();
         }
 
+        [RelayCommand]
+        public void StopPlayback() => _musicService.Stop();
+
         [RelayCommand] public void Next() => _musicService.Next();
         [RelayCommand] public void Previous() => _musicService.Previous();
 
@@ -350,6 +381,19 @@ namespace Spomusic.ViewModels
         {
             IsShuffle = !IsShuffle;
             _musicService.IsShuffle = IsShuffle;
+            QueueSongs = new ObservableCollection<SongItem>(_musicService.GetQueueSnapshot());
+        }
+
+        [RelayCommand]
+        public void PlayRandomWithShuffle()
+        {
+            if (QueueSongs.Count == 0 && Songs.Count == 0 && ActivePlaylistSongs.Count == 0)
+                return;
+
+            IsShuffle = true;
+            _musicService.IsShuffle = true;
+            _musicService.PlayRandom();
+            QueueSongs = new ObservableCollection<SongItem>(_musicService.GetQueueSnapshot());
         }
 
         [RelayCommand]
@@ -357,6 +401,19 @@ namespace Spomusic.ViewModels
         {
             RepeatMode = RepeatMode == RepeatMode.All ? RepeatMode.One : (RepeatMode == RepeatMode.One ? RepeatMode.None : RepeatMode.All);
             _musicService.RepeatMode = RepeatMode;
+        }
+
+        public void SetSleepTimer(int minutes)
+        {
+            if (minutes <= 0)
+                return;
+
+            _musicService.SetSleepTimer(TimeSpan.FromMinutes(minutes));
+        }
+
+        public void CancelSleepTimer()
+        {
+            _musicService.CancelSleepTimer();
         }
 
         [RelayCommand] public async Task ShareSong() => await _musicService.ShareCurrentSong();

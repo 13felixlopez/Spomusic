@@ -1,5 +1,6 @@
 using Spomusic.ViewModels;
 using Spomusic.Models;
+using System.ComponentModel;
 
 namespace Spomusic
 {
@@ -8,13 +9,20 @@ namespace Spomusic
         private MainViewModel ViewModel => (MainViewModel)BindingContext;
         private int _lastScrolledLyricIndex = -1;
         private CancellationTokenSource? _lyricsScrollCts;
+        private CancellationTokenSource? _metadataMarqueeCts;
+        private double _lastAdaptiveWidth = -1;
+        private bool _isLibraryHeroCollapsed;
+        private bool _isLibraryHeroAnimating;
+        private double _libraryHeroExpandedHeight = -1;
+        private double _libraryHeroCollapsedHeight = 118;
+        private const string MarqueeSeparator = "     •     ";
 
         public MainPage(MainViewModel viewModel)
         {
             InitializeComponent();
             BindingContext = viewModel;
             
-            // Auto-scroll lyrics logic
+            // Logica de auto-scroll para letras
             ViewModel.RequestScrollToLyric += (index) => {
                 MainThread.BeginInvokeOnMainThread(() => {
                     if (LyricsCollectionView.ItemsSource != null && index >= 0)
@@ -23,31 +31,22 @@ namespace Spomusic
                     }
                 });
             };
+
+            ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+            // Mantiene estable el reproductor principal en distintos anchos
+            // recalculando las superficies mas grandes desde el viewport real.
+            SizeChanged += OnPageSizeChanged;
         }
 
         private async void OnMiniPlayerTapped(object sender, TappedEventArgs e)
         {
-            FullPlayerOverlay.IsVisible = true;
-            if (ViewModel.IsReducedMotion)
-            {
-                FullPlayerOverlay.TranslationY = 0;
-                return;
-            }
-
-            await FullPlayerOverlay.TranslateTo(0, 0, 420, Easing.CubicOut);
+            await OpenFullPlayerAsync();
         }
 
         private async void OnCloseFullPlayerClicked(object sender, EventArgs e)
         {
-            if (ViewModel.IsReducedMotion)
-            {
-                FullPlayerOverlay.TranslationY = 1000;
-            }
-            else
-            {
-                await FullPlayerOverlay.TranslateTo(0, 1000, 380, Easing.CubicIn);
-            }
-            FullPlayerOverlay.IsVisible = false;
+            await CloseFullPlayerAsync();
         }
 
         private void OnSliderDragCompleted(object sender, EventArgs e)
@@ -110,8 +109,207 @@ namespace Spomusic
         protected override async void OnAppearing()
         {
             base.OnAppearing();
+            ApplyResponsiveLayout(Width);
+            ApplyLibraryHeroVisualStateImmediate();
             await CheckAndRequestPermissions();
         }
+
+        private void OnPageSizeChanged(object? sender, EventArgs e)
+        {
+            ApplyResponsiveLayout(Width);
+        }
+
+        private void ApplyResponsiveLayout(double pageWidth)
+        {
+            if (pageWidth <= 0 || Math.Abs(pageWidth - _lastAdaptiveWidth) < 1)
+                return;
+
+            _lastAdaptiveWidth = pageWidth;
+
+            // Estos limites preservan la portada dominante en telefonos angostos
+            // sin estirar de mas las superficies fijas en portrait.
+            var contentPadding = pageWidth < 380 ? 18 : 28;
+            var artworkSize = Math.Clamp(pageWidth - (contentPadding * 2), 236, 360);
+            var sidePanelWidth = Math.Clamp(pageWidth * 0.86, 280, 380);
+            var compactPhone = pageWidth < 360;
+
+            FullPlayerArtwork.WidthRequest = artworkSize;
+            FullPlayerArtwork.HeightRequest = artworkSize;
+            FullPlayerArtwork.Margin = new Thickness(contentPadding, 28, contentPadding, 0);
+
+            FullPlayerMetadataRow.Margin = new Thickness(contentPadding, 18, Math.Max(18, contentPadding - 6), 0);
+
+            FullPlayerTitleLabel.FontSize = compactPhone ? 22 : 26;
+            FullPlayerArtistLabel.FontSize = compactPhone ? 16 : 18;
+
+            DiscoverPanel.WidthRequest = sidePanelWidth;
+            QueuePanel.WidthRequest = sidePanelWidth;
+            _libraryHeroCollapsedHeight = compactPhone ? 104 : 118;
+
+            if (!_isLibraryHeroCollapsed && HomeLibraryHeroCard.Height > 0)
+            {
+                _libraryHeroExpandedHeight = HomeLibraryHeroCard.Height;
+                HomeLibraryHeroCard.HeightRequest = -1;
+            }
+        }
+
+        private async void OnToggleLibraryHeroClicked(object sender, TappedEventArgs e)
+        {
+            if (_isLibraryHeroAnimating)
+                return;
+
+            _isLibraryHeroCollapsed = !_isLibraryHeroCollapsed;
+            await ApplyLibraryHeroVisualStateAsync(animated: true);
+        }
+
+        private void ApplyLibraryHeroVisualStateImmediate()
+        {
+            if (HomeLibraryHeroCard.Height > 0 && !_isLibraryHeroCollapsed)
+                _libraryHeroExpandedHeight = HomeLibraryHeroCard.Height;
+
+            var expandedHeight = _libraryHeroExpandedHeight > 0
+                ? _libraryHeroExpandedHeight
+                : (_libraryHeroCollapsedHeight + 96);
+
+            var targetHeight = _isLibraryHeroCollapsed ? _libraryHeroCollapsedHeight : expandedHeight;
+            var targetPadding = _isLibraryHeroCollapsed ? new Thickness(18, 12) : new Thickness(18);
+            var targetSpacing = _isLibraryHeroCollapsed ? 8d : 14d;
+            var targetHeaderSpacing = _isLibraryHeroCollapsed ? 1d : 4d;
+            var secondaryOpacity = _isLibraryHeroCollapsed ? 0d : 1d;
+
+            HomeLibraryHeroCard.HeightRequest = _isLibraryHeroCollapsed ? targetHeight : -1;
+            HomeLibraryHeroCard.Padding = targetPadding;
+            HomeLibraryHeroContent.Spacing = targetSpacing;
+            HomeLibraryHeroHeader.Spacing = targetHeaderSpacing;
+            HomeLibraryHeroSummary.Opacity = secondaryOpacity;
+            HomeLibraryHeroMetrics.Opacity = secondaryOpacity;
+            HomeLibraryHeroActionRow.Opacity = secondaryOpacity;
+            HomeLibraryHeroSummary.IsVisible = !_isLibraryHeroCollapsed;
+            HomeLibraryHeroMetrics.IsVisible = !_isLibraryHeroCollapsed;
+            HomeLibraryHeroActionRow.IsVisible = !_isLibraryHeroCollapsed;
+            HomeLibraryHeroToggleIcon.Rotation = _isLibraryHeroCollapsed ? 0 : 180;
+        }
+
+        private async Task ApplyLibraryHeroVisualStateAsync(bool animated)
+        {
+            if (_isLibraryHeroAnimating)
+                return;
+
+            if (HomeLibraryHeroCard.Height > 0 && !_isLibraryHeroCollapsed)
+                _libraryHeroExpandedHeight = HomeLibraryHeroCard.Height;
+
+            var expandedHeight = _libraryHeroExpandedHeight > 0
+                ? _libraryHeroExpandedHeight
+                : (_libraryHeroCollapsedHeight + 96);
+
+            var targetHeight = _isLibraryHeroCollapsed ? _libraryHeroCollapsedHeight : expandedHeight;
+            var targetPadding = _isLibraryHeroCollapsed ? new Thickness(18, 12) : new Thickness(18);
+            var targetSpacing = _isLibraryHeroCollapsed ? 8d : 14d;
+            var targetHeaderSpacing = _isLibraryHeroCollapsed ? 1d : 4d;
+            var secondaryOpacity = _isLibraryHeroCollapsed ? 0d : 1d;
+
+            if (!animated)
+            {
+                ApplyLibraryHeroVisualStateImmediate();
+                return;
+            }
+
+            _isLibraryHeroAnimating = true;
+            try
+            {
+                if (!_isLibraryHeroCollapsed)
+                {
+                    HomeLibraryHeroSummary.IsVisible = true;
+                    HomeLibraryHeroMetrics.IsVisible = true;
+                    HomeLibraryHeroActionRow.IsVisible = true;
+                }
+
+                await Task.WhenAll(
+                    AnimateDoubleAsync(
+                        start: HomeLibraryHeroCard.HeightRequest > 0 ? HomeLibraryHeroCard.HeightRequest : expandedHeight,
+                        end: targetHeight,
+                        setter: value => HomeLibraryHeroCard.HeightRequest = value,
+                        duration: 260,
+                        easing: Easing.CubicOut),
+                    AnimateThicknessAsync(
+                        start: HomeLibraryHeroCard.Padding,
+                        end: targetPadding,
+                        setter: value => HomeLibraryHeroCard.Padding = value,
+                        duration: 260,
+                        easing: Easing.CubicOut),
+                    AnimateDoubleAsync(
+                        start: HomeLibraryHeroContent.Spacing,
+                        end: targetSpacing,
+                        setter: value => HomeLibraryHeroContent.Spacing = value,
+                        duration: 260,
+                        easing: Easing.CubicOut),
+                    AnimateDoubleAsync(
+                        start: HomeLibraryHeroHeader.Spacing,
+                        end: targetHeaderSpacing,
+                        setter: value => HomeLibraryHeroHeader.Spacing = value,
+                        duration: 260,
+                        easing: Easing.CubicOut),
+                    HomeLibraryHeroSummary.FadeTo(secondaryOpacity, 220, Easing.CubicInOut),
+                    HomeLibraryHeroMetrics.FadeTo(secondaryOpacity, 220, Easing.CubicInOut),
+                    HomeLibraryHeroActionRow.FadeTo(secondaryOpacity, 220, Easing.CubicInOut));
+
+                if (_isLibraryHeroCollapsed)
+                {
+                    HomeLibraryHeroSummary.IsVisible = false;
+                    HomeLibraryHeroMetrics.IsVisible = false;
+                    HomeLibraryHeroActionRow.IsVisible = false;
+                }
+                else
+                {
+                    // Cuando termina de expandirse, se libera la altura fija
+                    // para que la tarjeta recupere su tamano natural.
+                    HomeLibraryHeroCard.HeightRequest = -1;
+                }
+
+                HomeLibraryHeroToggleIcon.Rotation = _isLibraryHeroCollapsed ? 0 : 180;
+            }
+            finally
+            {
+                _isLibraryHeroAnimating = false;
+            }
+        }
+
+        private Task AnimateDoubleAsync(double start, double end, Action<double> setter, uint duration = 180, Easing? easing = null)
+        {
+            var tcs = new TaskCompletionSource();
+            var animation = new Animation(value => setter(value), start, end, easing ?? Easing.CubicInOut);
+            animation.Commit(
+                owner: this,
+                name: $"double-{Guid.NewGuid():N}",
+                rate: 16,
+                length: duration,
+                finished: (_, _) => tcs.TrySetResult());
+            return tcs.Task;
+        }
+
+        private Task AnimateThicknessAsync(Thickness start, Thickness end, Action<Thickness> setter, uint duration = 180, Easing? easing = null)
+        {
+            var tcs = new TaskCompletionSource();
+            var animation = new Animation(progress =>
+            {
+                setter(new Thickness(
+                    Lerp(start.Left, end.Left, progress),
+                    Lerp(start.Top, end.Top, progress),
+                    Lerp(start.Right, end.Right, progress),
+                    Lerp(start.Bottom, end.Bottom, progress)));
+            }, 0, 1, easing ?? Easing.CubicInOut);
+
+            animation.Commit(
+                owner: this,
+                name: $"thickness-{Guid.NewGuid():N}",
+                rate: 16,
+                length: duration,
+                finished: (_, _) => tcs.TrySetResult());
+            return tcs.Task;
+        }
+
+        private static double Lerp(double start, double end, double progress)
+            => start + ((end - start) * progress);
 
         private async Task CheckAndRequestPermissions()
         {
@@ -201,15 +399,185 @@ namespace Spomusic
             LibrarySearchBar.Focus();
         }
 
+        private async void OnStartRandomClicked(object sender, TappedEventArgs e)
+        {
+            ViewModel.PlayRandomWithShuffleCommand.Execute(null);
+            await OpenFullPlayerAsync();
+        }
+
         private void OnCloseAppClicked(object sender, TappedEventArgs e)
         {
+            ViewModel.StopPlayback();
 #if ANDROID
+            Microsoft.Maui.ApplicationModel.Platform.CurrentActivity?.FinishAffinity();
             Android.OS.Process.KillProcess(Android.OS.Process.MyPid());
 #else
             var window = Application.Current?.Windows.FirstOrDefault();
             if (window != null)
                 Application.Current!.CloseWindow(window);
 #endif
+        }
+
+        private async void OnSleepTimerClicked(object sender, TappedEventArgs e)
+        {
+            var option = await DisplayActionSheet(
+                "Dormir en",
+                "Cancelar",
+                null,
+                "15 minutos",
+                "30 minutos",
+                "60 minutos",
+                "Personalizado",
+                "Desactivar");
+
+            switch (option)
+            {
+                case "15 minutos":
+                    ViewModel.SetSleepTimer(15);
+                    break;
+                case "30 minutos":
+                    ViewModel.SetSleepTimer(30);
+                    break;
+                case "60 minutos":
+                    ViewModel.SetSleepTimer(60);
+                    break;
+                case "Desactivar":
+                    ViewModel.CancelSleepTimer();
+                    break;
+                case "Personalizado":
+                    var input = await DisplayPromptAsync("Dormir en", "Minutos antes de detener la reproducción:", "Programar", "Cancelar", keyboard: Keyboard.Numeric);
+                    if (int.TryParse(input, out var minutes) && minutes > 0)
+                        ViewModel.SetSleepTimer(minutes);
+                    break;
+            }
+        }
+
+        private void OnQuickSleep15Clicked(object sender, TappedEventArgs e) => ViewModel.SetSleepTimer(15);
+        private void OnQuickSleep30Clicked(object sender, TappedEventArgs e) => ViewModel.SetSleepTimer(30);
+        private void OnQuickSleep60Clicked(object sender, TappedEventArgs e) => ViewModel.SetSleepTimer(60);
+        private void OnCancelSleepTimerClicked(object sender, TappedEventArgs e) => ViewModel.CancelSleepTimer();
+
+        /// <summary>
+        /// Mantiene el overlay sincronizado con la sesión real de reproducción para evitar pantallas superpuestas vacías.
+        /// </summary>
+        private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(MainViewModel.CurrentSong))
+                return;
+
+            if (ViewModel.CurrentSong == null)
+            {
+                await CloseFullPlayerAsync(immediate: true);
+                return;
+            }
+
+            SyncMetadataLabels();
+            RestartMetadataMarquee();
+        }
+
+        private async Task OpenFullPlayerAsync()
+        {
+            if (ViewModel.CurrentSong == null)
+                return;
+
+            FullPlayerOverlay.IsVisible = true;
+            if (ViewModel.IsReducedMotion)
+            {
+                FullPlayerOverlay.TranslationY = 0;
+            }
+            else
+            {
+                await FullPlayerOverlay.TranslateTo(0, 0, 420, Easing.CubicOut);
+            }
+
+            SyncMetadataLabels();
+            RestartMetadataMarquee();
+        }
+
+        private async Task CloseFullPlayerAsync(bool immediate = false)
+        {
+            _metadataMarqueeCts?.Cancel();
+
+            if (!FullPlayerOverlay.IsVisible)
+            {
+                FullPlayerOverlay.TranslationY = 1000;
+                return;
+            }
+
+            if (immediate || ViewModel.IsReducedMotion)
+            {
+                FullPlayerOverlay.TranslationY = 1000;
+            }
+            else
+            {
+                await FullPlayerOverlay.TranslateTo(0, 1000, 380, Easing.CubicIn);
+            }
+
+            FullPlayerOverlay.IsVisible = false;
+        }
+
+        /// <summary>
+        /// Duplica el texto visible para que el scroll sea continuo y no haga el rebote agresivo del prototipo anterior.
+        /// </summary>
+        private void RestartMetadataMarquee()
+        {
+            _metadataMarqueeCts?.Cancel();
+            _metadataMarqueeCts = new CancellationTokenSource();
+            var token = _metadataMarqueeCts.Token;
+
+            _ = MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                await Task.Delay(180, token);
+                if (token.IsCancellationRequested || !FullPlayerOverlay.IsVisible)
+                    return;
+
+                await Task.WhenAll(
+                    AnimateScrollerAsync(FullPlayerTitleScroller, FullPlayerTitleLabel, token),
+                    AnimateScrollerAsync(FullPlayerArtistScroller, FullPlayerArtistLabel, token));
+            });
+        }
+
+        private void SyncMetadataLabels()
+        {
+            var title = ViewModel.CurrentSong?.Title ?? string.Empty;
+            var artist = ViewModel.CurrentSong?.Artist ?? string.Empty;
+
+            FullPlayerTitleLabel.Text = title;
+            FullPlayerArtistLabel.Text = artist;
+        }
+
+        private async Task AnimateScrollerAsync(ScrollView scroller, Label label, CancellationToken token)
+        {
+            var sourceText = label.Text ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(sourceText))
+            {
+                await scroller.ScrollToAsync(0, 0, false);
+                return;
+            }
+
+            await scroller.ScrollToAsync(0, 0, false);
+            await Task.Delay(220, token);
+
+            if (label.Width <= scroller.Width || scroller.Width <= 0)
+                return;
+
+            label.Text = sourceText + MarqueeSeparator + sourceText;
+            await Task.Delay(100, token);
+
+            var cycleDistance = Math.Max(0, (label.Width / 2) - scroller.Width);
+            if (cycleDistance <= 0)
+                return;
+
+            var offset = 0d;
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(30, token);
+                offset += 0.32;
+                if (offset >= cycleDistance)
+                    offset = 0;
+
+                await scroller.ScrollToAsync(offset, 0, false);
+            }
         }
     }
 }

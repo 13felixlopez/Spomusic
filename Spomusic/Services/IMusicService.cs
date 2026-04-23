@@ -25,6 +25,7 @@ namespace Spomusic.Services
         void Next();
         void Previous();
         void Stop();
+        void PlayRandom();
         void SeekTo(TimeSpan position);
         
         bool IsPlaying { get; }
@@ -48,14 +49,18 @@ namespace Spomusic.Services
         void MoveQueueItem(int fromIndex, int toIndex);
         IReadOnlyList<SongItem> GetQueueSnapshot();
 
-        event Action<SongItem>? OnSongChanged;
+        event Action<SongItem?>? OnSongChanged;
         event Action<bool>? OnPlaybackStatusChanged;
         event Action<TimeSpan>? OnPositionChanged;
         event Action<int>? OnLyricIndexChanged;
         event Action<double>? OnLyricProgressChanged;
         event Action<IReadOnlyList<SongItem>>? OnQueueChanged;
+        event Action<TimeSpan?>? OnSleepTimerChanged;
         
         TimeSpan CurrentPosition { get; }
         TimeSpan Duration { get; }
+        TimeSpan? SleepTimerRemaining { get; }
+        void SetSleepTimer(TimeSpan duration);
+        void CancelSleepTimer();
     }
 }

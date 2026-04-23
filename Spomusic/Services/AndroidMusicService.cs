@@ -4,11 +4,14 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Spomusic.Models;
+using Microsoft.Maui.Storage;
 
 #if ANDROID
 using Android.Media;
 using Android.Content;
+using Android.Runtime;
 using Microsoft.Maui.ApplicationModel;
+using Spomusic.Platforms.Android;
 #endif
 
 namespace Spomusic.Services
@@ -32,6 +35,14 @@ namespace Spomusic.Services
         private readonly List<int> _timingTapOffsets = new();
         private long _lastResumePersistTicks = 0;
         private long _lyricsRequestVersion = 0;
+        private readonly AudioManager? _audioManager;
+        private readonly AudioFocusChangeListener? _audioFocusListener;
+        private NoisyAudioReceiver? _noisyAudioReceiver;
+        private bool _resumeAfterTransientAudioFocusLoss;
+        private bool _manualPauseRequested;
+        private bool _isNoisyReceiverRegistered;
+        private System.Timers.Timer? _sleepTimer;
+        private DateTimeOffset? _sleepTimerEndsAtUtc;
 
         public bool IsPlaying => _mediaPlayer?.IsPlaying ?? false;
         public SongItem? CurrentSong => _currentPlaylistIndex >= 0 && _currentPlaylistIndex < _playlist.Count ? (_isShuffle ? _playlist[_shuffledIndices[_currentPlaylistIndex]] : _playlist[_currentPlaylistIndex]) : null;
@@ -44,12 +55,22 @@ namespace Spomusic.Services
             {
                 if (_isShuffle == value) return;
                 _isShuffle = value;
+                Preferences.Default.Set("playback.shuffle", value);
                 RegenerateIndices();
                 NotifyQueueChanged();
             }
         }
 
-        public RepeatMode RepeatMode { get; set; } = RepeatMode.All;
+        private RepeatMode _repeatMode = RepeatMode.All;
+        public RepeatMode RepeatMode
+        {
+            get => _repeatMode;
+            set
+            {
+                _repeatMode = value;
+                Preferences.Default.Set("playback.repeat", (int)value);
+            }
+        }
         public List<LyricLine> CurrentLyrics { get; private set; } = new();
         public string? CurrentLyricLine { get; private set; }
         public int CurrentLyricIndex { get; private set; } = -1;
@@ -62,13 +83,19 @@ namespace Spomusic.Services
 
         public TimeSpan CurrentPosition => TimeSpan.FromMilliseconds(_mediaPlayer?.CurrentPosition ?? 0);
         public TimeSpan Duration => TimeSpan.FromMilliseconds(_mediaPlayer?.Duration ?? 0);
+        public TimeSpan? SleepTimerRemaining => _sleepTimerEndsAtUtc.HasValue
+            ? (_sleepTimerEndsAtUtc.Value - DateTimeOffset.UtcNow) > TimeSpan.Zero
+                ? _sleepTimerEndsAtUtc.Value - DateTimeOffset.UtcNow
+                : TimeSpan.Zero
+            : null;
 
-        public event Action<SongItem>? OnSongChanged;
+        public event Action<SongItem?>? OnSongChanged;
         public event Action<bool>? OnPlaybackStatusChanged;
         public event Action<TimeSpan>? OnPositionChanged;
         public event Action<int>? OnLyricIndexChanged;
         public event Action<double>? OnLyricProgressChanged;
         public event Action<IReadOnlyList<SongItem>>? OnQueueChanged;
+        public event Action<TimeSpan?>? OnSleepTimerChanged;
 
         public AndroidMusicService(DatabaseService db, MusicScannerService scanner)
         {
@@ -87,6 +114,14 @@ namespace Spomusic.Services
             _retryTimer = new System.Timers.Timer(90000);
             _retryTimer.Elapsed += async (s, e) => await ProcessLyricRetryQueueAsync();
             _retryTimer.Start();
+
+            _sleepTimer = new System.Timers.Timer(1000);
+            _sleepTimer.Elapsed += OnSleepTimerElapsed;
+
+            _audioManager = Platform.AppContext.GetSystemService(Context.AudioService) as AudioManager;
+            _audioFocusListener = new AudioFocusChangeListener(this);
+            _isShuffle = Preferences.Default.Get("playback.shuffle", false);
+            _repeatMode = (RepeatMode)Preferences.Default.Get("playback.repeat", (int)RepeatMode.All);
         }
 
         private void AttachCompletion(MediaPlayer player)
@@ -97,12 +132,13 @@ namespace Spomusic.Services
         private void RegenerateIndices()
         {
             var current = CurrentSong;
-            _shuffledIndices = Enumerable.Range(0, _playlist.Count).ToList();
+            _shuffledIndices = BuildSmartShuffleIndices(_playlist);
             if (_isShuffle)
             {
-                var rng = new Random();
-                _shuffledIndices = _shuffledIndices.OrderBy(_ => rng.Next()).ToList();
+                _shuffledIndices = BuildSmartShuffleIndices(_playlist);
             }
+            else
+                _shuffledIndices = Enumerable.Range(0, _playlist.Count).ToList();
 
             if (current != null)
                 _currentPlaylistIndex = _shuffledIndices.IndexOf(_playlist.IndexOf(current));
@@ -160,11 +196,32 @@ namespace Spomusic.Services
             _ = PlayInternalAsync(song, allowCrossfade: true, isAutoTransition: false);
         }
 
+        public void PlayRandom()
+        {
+            if (_playlist.Count == 0) return;
+
+            IsShuffle = true;
+            if (_shuffledIndices.Count == 0)
+                RegenerateIndices();
+
+            var randomPosition = Random.Shared.Next(_shuffledIndices.Count);
+            if (_shuffledIndices.Count > 1 && _currentPlaylistIndex == randomPosition)
+                randomPosition = (randomPosition + 1) % _shuffledIndices.Count;
+
+            _currentPlaylistIndex = randomPosition;
+            var song = CurrentSong;
+            if (song != null)
+                _ = PlayInternalAsync(song, allowCrossfade: true, isAutoTransition: false);
+        }
+
         private async Task PlayInternalAsync(SongItem song, bool allowCrossfade, bool isAutoTransition)
         {
             await _playLock.WaitAsync();
             try
             {
+                if (!RequestAudioFocus())
+                    return;
+
                 var nextPlayer = new MediaPlayer();
                 nextPlayer.SetDataSource(song.Path);
                 nextPlayer.Prepare();
@@ -208,6 +265,9 @@ namespace Spomusic.Services
                 }
 
                 _timer?.Start();
+                _manualPauseRequested = false;
+                _resumeAfterTransientAudioFocusLoss = false;
+                RegisterNoisyReceiver();
                 OnSongChanged?.Invoke(song);
                 OnPlaybackStatusChanged?.Invoke(true);
                 OnPositionChanged?.Invoke(CurrentPosition);
@@ -268,19 +328,16 @@ namespace Spomusic.Services
 
         public void Pause()
         {
-            _mediaPlayer?.Pause();
-            _timer?.Stop();
-            OnPlaybackStatusChanged?.Invoke(false);
-            _ = PersistResumePositionAsync(CurrentPosition);
-            if (CurrentSong != null) UpdateNotification(CurrentSong, false);
+            PauseCore(fromAudioInterruption: false);
+            AbandonAudioFocus();
         }
 
         public void Resume()
         {
-            _mediaPlayer?.Start();
-            _timer?.Start();
-            OnPlaybackStatusChanged?.Invoke(true);
-            if (CurrentSong != null) UpdateNotification(CurrentSong, true);
+            if (!RequestAudioFocus())
+                return;
+
+            ResumeCore(fromAudioInterruption: false);
         }
 
         public void Next()
@@ -323,11 +380,22 @@ namespace Spomusic.Services
 
         public void Stop()
         {
+            var positionBeforeStop = CurrentPosition;
+            _manualPauseRequested = false;
+            _resumeAfterTransientAudioFocusLoss = false;
             _mediaPlayer?.Stop();
+            _mediaPlayer?.Release();
+            _mediaPlayer = null;
+            _currentPlaylistIndex = -1;
             _timer?.Stop();
+            CancelSleepTimer();
             OnPlaybackStatusChanged?.Invoke(false);
-            _ = PersistResumePositionAsync(CurrentPosition);
-            if (CurrentSong != null) UpdateNotification(CurrentSong, false);
+            OnSongChanged?.Invoke(null);
+            OnPositionChanged?.Invoke(TimeSpan.Zero);
+            _ = PersistResumePositionAsync(positionBeforeStop);
+            UnregisterNoisyReceiver();
+            AbandonAudioFocus();
+            StopForegroundService();
         }
 
         public void SeekTo(TimeSpan position) => _mediaPlayer?.SeekTo((int)position.TotalMilliseconds);
@@ -537,6 +605,39 @@ namespace Spomusic.Services
             return _playlist[realIndex];
         }
 
+        private static List<int> BuildSmartShuffleIndices(List<SongItem> songs)
+        {
+            var artistGroups = songs
+                .Select((song, index) => new { song, index })
+                .GroupBy(x => string.IsNullOrWhiteSpace(x.song.Artist) ? "__UNKNOWN__" : x.song.Artist.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => new Queue<int>(g.OrderBy(_ => Random.Shared.Next()).Select(x => x.index)),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var ordered = new List<int>(songs.Count);
+            string? previousArtist = null;
+
+            while (artistGroups.Count > 0)
+            {
+                var candidates = artistGroups
+                    .Where(x => !string.Equals(x.Key, previousArtist, StringComparison.OrdinalIgnoreCase) || artistGroups.Count == 1)
+                    .OrderByDescending(x => x.Value.Count)
+                    .ThenBy(_ => Random.Shared.Next())
+                    .ToList();
+
+                var selected = candidates.First();
+                var songIndex = selected.Value.Dequeue();
+                ordered.Add(songIndex);
+                previousArtist = selected.Key;
+
+                if (selected.Value.Count == 0)
+                    artistGroups.Remove(selected.Key);
+            }
+
+            return ordered;
+        }
+
         private void ApplyLyrics(SongItem song, long requestVersion, string lyricsText)
         {
             if (!ShouldApplyLyricsResult(song, requestVersion))
@@ -653,19 +754,198 @@ namespace Spomusic.Services
         private void UpdateNotification(SongItem song, bool isPlaying)
         {
             var context = Platform.AppContext;
-            var intent = new Intent(context, typeof(Spomusic.Platforms.Android.MusicForegroundService));
+            var intent = new Intent(context, typeof(MusicForegroundService));
             intent.PutExtra("title", song.Title);
             intent.PutExtra("artist", song.Artist);
             intent.PutExtra("isPlaying", isPlaying);
+            intent.PutExtra("durationMs", (long)Duration.TotalMilliseconds);
+            intent.PutExtra("positionMs", (long)CurrentPosition.TotalMilliseconds);
             var art = song.AlbumArt ?? _scanner.GetAlbumArt(song.Path);
             if (art != null) intent.PutExtra("albumArt", art);
             context.StartForegroundService(intent);
-            Spomusic.Platforms.Android.SpomusicAppWidget.UpdateNowPlaying(context, song.Title, song.Artist, isPlaying);
+            SpomusicAppWidget.UpdateNowPlaying(context, song.Title, song.Artist, isPlaying);
+        }
+
+        private void PauseCore(bool fromAudioInterruption)
+        {
+            if (_mediaPlayer == null || !_mediaPlayer.IsPlaying)
+                return;
+
+            _manualPauseRequested = !fromAudioInterruption;
+            _resumeAfterTransientAudioFocusLoss = fromAudioInterruption;
+            _mediaPlayer.Pause();
+            _timer?.Stop();
+            OnPlaybackStatusChanged?.Invoke(false);
+            _ = PersistResumePositionAsync(CurrentPosition);
+            if (CurrentSong != null) UpdateNotification(CurrentSong, false);
+        }
+
+        private void ResumeCore(bool fromAudioInterruption)
+        {
+            if (_mediaPlayer == null || _mediaPlayer.IsPlaying)
+                return;
+
+            _manualPauseRequested = false;
+            _resumeAfterTransientAudioFocusLoss = fromAudioInterruption;
+            _mediaPlayer.Start();
+            _timer?.Start();
+            RegisterNoisyReceiver();
+            OnPlaybackStatusChanged?.Invoke(true);
+            if (CurrentSong != null) UpdateNotification(CurrentSong, true);
+        }
+
+        private bool RequestAudioFocus()
+        {
+            if (_audioManager == null || _audioFocusListener == null)
+                return true;
+
+#pragma warning disable CS0618
+            return _audioManager.RequestAudioFocus(_audioFocusListener, Android.Media.Stream.Music, AudioFocus.Gain) == AudioFocusRequest.Granted;
+#pragma warning restore CS0618
+        }
+
+        private void AbandonAudioFocus()
+        {
+            if (_audioManager == null || _audioFocusListener == null)
+                return;
+
+#pragma warning disable CS0618
+            _audioManager.AbandonAudioFocus(_audioFocusListener);
+#pragma warning restore CS0618
+        }
+
+        private void RegisterNoisyReceiver()
+        {
+            if (_isNoisyReceiverRegistered)
+                return;
+
+            var context = Platform.AppContext;
+            _noisyAudioReceiver ??= new NoisyAudioReceiver(this);
+            context.RegisterReceiver(_noisyAudioReceiver, new IntentFilter(AudioManager.ActionAudioBecomingNoisy));
+            _isNoisyReceiverRegistered = true;
+        }
+
+        private void UnregisterNoisyReceiver()
+        {
+            if (!_isNoisyReceiverRegistered || _noisyAudioReceiver == null)
+                return;
+
+            try
+            {
+                Platform.AppContext.UnregisterReceiver(_noisyAudioReceiver);
+            }
+            catch
+            {
+            }
+
+            _isNoisyReceiverRegistered = false;
+        }
+
+        private void StopForegroundService()
+        {
+            var context = Platform.AppContext;
+            var stopIntent = new Intent(context, typeof(MusicForegroundService));
+            stopIntent.SetAction(MusicForegroundService.ActionStop);
+            context.StartService(stopIntent);
+        }
+
+        private void HandleAudioFocusChange(AudioFocus focusChange)
+        {
+            switch (focusChange)
+            {
+                case AudioFocus.Loss:
+                    _resumeAfterTransientAudioFocusLoss = false;
+                    if (IsPlaying)
+                        PauseCore(fromAudioInterruption: true);
+                    AbandonAudioFocus();
+                    break;
+                case AudioFocus.LossTransient:
+                case AudioFocus.LossTransientCanDuck:
+                    if (IsPlaying)
+                        PauseCore(fromAudioInterruption: true);
+                    break;
+                case AudioFocus.Gain:
+                    if (_resumeAfterTransientAudioFocusLoss && !_manualPauseRequested)
+                    {
+                        _resumeAfterTransientAudioFocusLoss = false;
+                        ResumeCore(fromAudioInterruption: false);
+                    }
+                    break;
+            }
+        }
+
+        private sealed class AudioFocusChangeListener : Java.Lang.Object, AudioManager.IOnAudioFocusChangeListener
+        {
+            private readonly AndroidMusicService _service;
+
+            public AudioFocusChangeListener(AndroidMusicService service)
+            {
+                _service = service;
+            }
+
+            public void OnAudioFocusChange([GeneratedEnum] AudioFocus focusChange)
+            {
+                _service.HandleAudioFocusChange(focusChange);
+            }
+        }
+
+        private sealed class NoisyAudioReceiver : BroadcastReceiver
+        {
+            private readonly AndroidMusicService _service;
+
+            public NoisyAudioReceiver(AndroidMusicService service)
+            {
+                _service = service;
+            }
+
+            public override void OnReceive(Context? context, Intent? intent)
+            {
+                if (intent?.Action == AudioManager.ActionAudioBecomingNoisy)
+                    _service.PauseCore(fromAudioInterruption: true);
+            }
         }
 
         private void NotifyQueueChanged()
         {
             OnQueueChanged?.Invoke(GetQueueSnapshot());
+        }
+
+        public void SetSleepTimer(TimeSpan duration)
+        {
+            if (duration <= TimeSpan.Zero)
+                return;
+
+            _sleepTimerEndsAtUtc = DateTimeOffset.UtcNow.Add(duration);
+            _sleepTimer?.Start();
+            OnSleepTimerChanged?.Invoke(SleepTimerRemaining);
+        }
+
+        public void CancelSleepTimer()
+        {
+            _sleepTimerEndsAtUtc = null;
+            _sleepTimer?.Stop();
+            OnSleepTimerChanged?.Invoke(null);
+        }
+
+        private void OnSleepTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+        {
+            if (!_sleepTimerEndsAtUtc.HasValue)
+                return;
+
+            var remaining = _sleepTimerEndsAtUtc.Value - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                _sleepTimer?.Stop();
+                _sleepTimerEndsAtUtc = null;
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    Stop();
+                    OnSleepTimerChanged?.Invoke(null);
+                });
+                return;
+            }
+
+            OnSleepTimerChanged?.Invoke(remaining);
         }
 
         private static string BuildSongKey(SongItem song) => $"{song.Title}_{song.Artist}";
@@ -681,11 +961,13 @@ namespace Spomusic.Services
         public int LyricLeadMs { get; set; } = 650;
         public TimeSpan CurrentPosition => TimeSpan.Zero;
         public TimeSpan Duration => TimeSpan.Zero;
-        public event Action<SongItem>? OnSongChanged;
+        public TimeSpan? SleepTimerRemaining => null;
+        public event Action<SongItem?>? OnSongChanged;
         public event Action<bool>? OnPlaybackStatusChanged;
         public event Action<TimeSpan>? OnPositionChanged;
         public event Action<int>? OnLyricIndexChanged;
         public event Action<double>? OnLyricProgressChanged;
+        public event Action<TimeSpan?>? OnSleepTimerChanged;
         public AndroidMusicService(DatabaseService db, MusicScannerService sc) { _db = db; _scanner = sc; }
         public void Play(SongItem song) { }
         public void Pause() { }
@@ -693,7 +975,10 @@ namespace Spomusic.Services
         public void Next() { }
         public void Previous() { }
         public void Stop() { }
+        public void PlayRandom() { }
         public void SeekTo(TimeSpan position) { }
+        public void SetSleepTimer(TimeSpan duration) { }
+        public void CancelSleepTimer() { }
         public void SetPlaylist(List<SongItem> songs) { }
         public Task ShareCurrentSong() => Task.CompletedTask;
         public Task FetchLyricsAsync(SongItem song) => Task.CompletedTask;

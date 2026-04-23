@@ -24,6 +24,7 @@
             <x:String x:Key="RepeatIcon">M17,17H7V14L3,18L7,22V19H19V13H17V17M7,7H17V10L21,6L17,2V5H5V11H7V7Z</x:String>
             <x:String x:Key="ShareIcon">M18,16.08C17.24,16.08 16.56,16.38 16.04,16.85L8.91,12.7C8.96,12.47 9,12.24 9,12C9,11.76 8.96,11.53 8.91,11.3L15.96,7.19C16.5,7.69 17.21,8 18,8A3,3 0 0,0 21,5A3,3 0 0,0 18,2A3,3 0 0,0 15,5C15,5.24 15.04,5.47 15.09,5.7L8.04,9.81C7.5,9.31 6.79,9 6,9A3,3 0 0,0 3,12A3,3 0 0,0 6,15C6.79,15 7.5,14.69 8.04,14.19L15.16,18.35C15.11,18.53 15.11,18.71 15.11,18.9C15.11,20.47 16.42,21.75 18.02,21.75C19.62,21.75 20.93,20.47 20.93,18.9C20.93,17.33 19.62,16.05 18.02,16.05L18,16.08Z</x:String>
             <x:String x:Key="CloseIcon">M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z</x:String>
+            <x:String x:Key="StopIcon">M6,6H18V18H6V6Z</x:String>
             <x:String x:Key="DownloadIcon">M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z</x:String>
             <x:String x:Key="QueueIcon">M3,5H21V7H3V5M3,11H21V13H3V11M3,17H21V19H3V17Z</x:String>
             <x:String x:Key="FocusIcon">M7,14H5V5H14V7H7V14M10,10H19V19H10V10M12,12V17H17V12H12Z</x:String>
@@ -53,6 +54,7 @@
         </Border>
 
         <Border
+            x:Name="HomeLibraryHeroCard"
             Grid.Row="1"
             Margin="16,12,16,0"
             Padding="18"
@@ -66,32 +68,68 @@
                     <GradientStop Offset="1.0" Color="{StaticResource SpotifyHeroBottom}" />
                 </LinearGradientBrush>
             </Border.Background>
-            <VerticalStackLayout Spacing="14" HorizontalOptions="Fill">
+            <VerticalStackLayout
+                x:Name="HomeLibraryHeroContent"
+                HorizontalOptions="Fill"
+                Spacing="14">
                 <Grid ColumnDefinitions="*,Auto">
                     <Label
-                        Style="{StaticResource SectionEyebrowLabel}"
                         HorizontalTextAlignment="Center"
+                        Style="{StaticResource SectionEyebrowLabel}"
                         Text="SPOMUSIC LIBRARY" />
-                    <ActivityIndicator
+                    <HorizontalStackLayout
                         Grid.Column="1"
-                        IsRunning="{Binding IsScanning}"
-                        IsVisible="{Binding IsScanning}"
-                        VerticalOptions="Center" />
+                        Spacing="8"
+                        VerticalOptions="Center">
+                        <ActivityIndicator
+                            IsRunning="{Binding IsScanning}"
+                            IsVisible="{Binding IsScanning}"
+                            VerticalOptions="Center" />
+                        <Border
+                            Padding="8"
+                            BackgroundColor="#18000000"
+                            Stroke="#22FFFFFF">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="14" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnToggleLibraryHeroClicked" />
+                            </Border.GestureRecognizers>
+                            <Path
+                                x:Name="HomeLibraryHeroToggleIcon"
+                                Aspect="Uniform"
+                                Data="{StaticResource ChevronDownIcon}"
+                                Fill="White"
+                                HeightRequest="14"
+                                Rotation="180"
+                                WidthRequest="14" />
+                        </Border>
+                    </HorizontalStackLayout>
                 </Grid>
-                <VerticalStackLayout HorizontalOptions="Center" Spacing="4">
+                <VerticalStackLayout
+                    x:Name="HomeLibraryHeroHeader"
+                    HorizontalOptions="Center"
+                    Spacing="4">
                     <Label
-                        Style="{StaticResource SectionTitleLabel}"
                         HorizontalTextAlignment="Center"
                         LineBreakMode="NoWrap"
+                        Style="{StaticResource SectionTitleLabel}"
                         Text="Tu Biblioteca" />
                     <Label
-                        Style="{StaticResource SectionBodyLabel}"
+                        x:Name="HomeLibraryHeroSummary"
                         HorizontalTextAlignment="Center"
                         MaxLines="2"
+                        Style="{StaticResource SectionBodyLabel}"
                         Text="{Binding LibrarySummary}" />
                 </VerticalStackLayout>
-                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
-                    <Border Padding="12,10" BackgroundColor="#18000000" Stroke="#22FFFFFF">
+                <Grid
+                    x:Name="HomeLibraryHeroMetrics"
+                    ColumnDefinitions="*,*,*"
+                    ColumnSpacing="10">
+                    <Border
+                        Padding="12,10"
+                        BackgroundColor="#18000000"
+                        Stroke="#22FFFFFF">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16" />
                         </Border.StrokeShape>
@@ -100,7 +138,11 @@
                             <Label Style="{StaticResource MetricCaptionLabel}" Text="Canciones" />
                         </VerticalStackLayout>
                     </Border>
-                    <Border Grid.Column="1" Padding="12,10" BackgroundColor="#18000000" Stroke="#22FFFFFF">
+                    <Border
+                        Grid.Column="1"
+                        Padding="12,10"
+                        BackgroundColor="#18000000"
+                        Stroke="#22FFFFFF">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16" />
                         </Border.StrokeShape>
@@ -109,7 +151,11 @@
                             <Label Style="{StaticResource MetricCaptionLabel}" Text="Artistas" />
                         </VerticalStackLayout>
                     </Border>
-                    <Border Grid.Column="2" Padding="12,10" BackgroundColor="#18000000" Stroke="#22FFFFFF">
+                    <Border
+                        Grid.Column="2"
+                        Padding="12,10"
+                        BackgroundColor="#18000000"
+                        Stroke="#22FFFFFF">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16" />
                         </Border.StrokeShape>
@@ -119,63 +165,45 @@
                         </VerticalStackLayout>
                     </Border>
                 </Grid>
+                <HorizontalStackLayout
+                    x:Name="HomeLibraryHeroActionRow"
+                    HorizontalOptions="End">
+                    <Border
+                        Padding="12,8"
+                        BackgroundColor="#1AA34A"
+                        Stroke="#26FFFFFF">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnStartRandomClicked" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="6">
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource ShuffleIcon}"
+                                Fill="Black"
+                                HeightRequest="14"
+                                WidthRequest="14" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="12"
+                                Text="Aleatorio"
+                                TextColor="Black"
+                                VerticalTextAlignment="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+                </HorizontalStackLayout>
             </VerticalStackLayout>
         </Border>
 
         <Grid
             Grid.Row="2"
             Margin="16,14,16,0"
-            RowDefinitions="Auto,Auto,*">
-            <ScrollView Grid.Row="0" Orientation="Horizontal">
-                <HorizontalStackLayout Spacing="8">
-                    <Button
-                        Style="{StaticResource HeroActionButton}"
-                        BackgroundColor="#1F1F1F"
-                        Command="{Binding SetSearchScopeCommand}"
-                        CommandParameter="Todo"
-                        Text="Todo" />
-                    <Button
-                        Style="{StaticResource HeroActionButton}"
-                        BackgroundColor="#1F1F1F"
-                        Command="{Binding SetSearchScopeCommand}"
-                        CommandParameter="Artista"
-                        Text="Artista" />
-                    <Button
-                        Style="{StaticResource HeroActionButton}"
-                        BackgroundColor="#1F1F1F"
-                        Command="{Binding SetSearchScopeCommand}"
-                        CommandParameter="Álbum"
-                        Text="Álbum" />
-                    <Button
-                        Style="{StaticResource HeroActionButton}"
-                        BackgroundColor="#1F1F1F"
-                        Command="{Binding SetSearchScopeCommand}"
-                        CommandParameter="Género"
-                        Text="Género" />
-                    <Button
-                        Style="{StaticResource HeroActionButton}"
-                        Command="{Binding ToggleFavoritesOnlyCommand}"
-                        Text="Favoritos">
-                        <Button.Triggers>
-                            <DataTrigger
-                                Binding="{Binding ShowOnlyFavorites}"
-                                TargetType="Button"
-                                Value="True">
-                                <Setter Property="BackgroundColor" Value="{StaticResource SpotifyChipActive}" />
-                                <Setter Property="BorderColor" Value="{StaticResource SpotifyChipStroke}" />
-                                <Setter Property="BorderWidth" Value="1" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
-                </HorizontalStackLayout>
-            </ScrollView>
-            <Label
-                Grid.Row="1"
-                Margin="4,10,4,8"
-                Style="{StaticResource SectionBodyLabel}"
-                Text="{Binding ActiveFilterLabel, StringFormat='{}Filtro activo: {0}'}" />
+            RowDefinitions="*">
             <CollectionView
-                Grid.Row="2"
+                x:Name="SongListView"
+                Grid.Row="0"
                 Margin="0,0,0,0"
                 ItemsSource="{Binding FilteredSongs}">
                 <CollectionView.EmptyView>
@@ -316,14 +344,14 @@
             <Border.StrokeShape>
                 <RoundRectangle CornerRadius="12" />
             </Border.StrokeShape>
-            <Grid ColumnDefinitions="45, *, Auto, Auto">
+            <Grid ColumnDefinitions="42, *, Auto, Auto" ColumnSpacing="10">
                 <Border
                     BackgroundColor="{StaticResource SpotifyGray}"
-                    HeightRequest="40"
+                    HeightRequest="42"
                     Stroke="Transparent"
-                    WidthRequest="40">
+                    WidthRequest="42">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="4" />
+                        <RoundRectangle CornerRadius="8" />
                     </Border.StrokeShape>
                     <Grid>
                         <Path
@@ -339,16 +367,18 @@
                 </Border>
                 <VerticalStackLayout
                     Grid.Column="1"
-                    Margin="12,0"
+                    Margin="6,0"
                     VerticalOptions="Center">
                     <Label
                         FontAttributes="Bold"
                         FontSize="14"
+                        LineBreakMode="TailTruncation"
                         MaxLines="1"
                         Text="{Binding CurrentSong.Title}"
                         TextColor="White" />
                     <Label
                         FontSize="12"
+                        LineBreakMode="TailTruncation"
                         MaxLines="1"
                         Text="{Binding CurrentSong.Artist}"
                         TextColor="{StaticResource SpotifyLightGray}" />
@@ -358,13 +388,13 @@
                 </VerticalStackLayout>
                 <Border
                     Grid.Column="2"
-                    Padding="11"
-                    BackgroundColor="#12FFFFFF"
-                    HeightRequest="44"
-                    Stroke="#30FFFFFF"
-                    WidthRequest="44">
+                    Padding="9"
+                    BackgroundColor="#16FFFFFF"
+                    HeightRequest="38"
+                    Stroke="#26FFFFFF"
+                    WidthRequest="38">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="22" />
+                        <RoundRectangle CornerRadius="19" />
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding TogglePlayPauseCommand}" />
@@ -385,21 +415,20 @@
                 </Border>
                 <Border
                     Grid.Column="3"
-                    Margin="8,0,0,0"
-                    Padding="11"
-                    BackgroundColor="#12FFFFFF"
-                    HeightRequest="44"
-                    Stroke="#30FFFFFF"
-                    WidthRequest="44">
+                    Padding="9"
+                    BackgroundColor="#16FFFFFF"
+                    HeightRequest="38"
+                    Stroke="#26FFFFFF"
+                    WidthRequest="38">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="22" />
+                        <RoundRectangle CornerRadius="19" />
                     </Border.StrokeShape>
                     <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnCloseAppClicked" />
+                        <TapGestureRecognizer Command="{Binding StopPlaybackCommand}" />
                     </Border.GestureRecognizers>
                     <Path
                         Aspect="Uniform"
-                        Data="{StaticResource CloseIcon}"
+                        Data="{StaticResource StopIcon}"
                         Fill="White" />
                 </Border>
             </Grid>
@@ -451,416 +480,496 @@
             </Grid.Background>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <Grid
-                Grid.Row="0"
-                Margin="15,20"
-                ColumnDefinitions="Auto, *, Auto, Auto, Auto">
-                <Border
-                    Padding="15"
-                    HeightRequest="50"
-                    Stroke="Transparent"
-                    WidthRequest="50">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnCloseFullPlayerClicked" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource ChevronDownIcon}"
-                        Fill="White" />
-                </Border>
-                <Label
-                    Grid.Column="1"
-                    CharacterSpacing="2"
-                    FontSize="12"
-                    HorizontalOptions="Center"
-                    Text="REPRODUCIENDO"
-                    TextColor="White"
-                    VerticalOptions="Center" />
-                <Border
-                    Grid.Column="2"
-                    Padding="15"
-                    HeightRequest="50"
-                    Stroke="Transparent"
-                    WidthRequest="50">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding ToggleQueuePanelCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource QueueIcon}"
-                        Fill="White" />
-                </Border>
-                <Border
-                    Grid.Column="3"
-                    Padding="15"
-                    HeightRequest="50"
-                    Stroke="Transparent"
-                    WidthRequest="50">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding ShareSongCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource ShareIcon}"
-                        Fill="White" />
-                </Border>
-                <Border
-                    Grid.Column="4"
-                    Padding="15"
-                    HeightRequest="50"
-                    Stroke="Transparent"
-                    WidthRequest="50">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding ToggleFocusModeCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource FocusIcon}"
-                        Fill="White" />
-                </Border>
-            </Grid>
-
-            <Border
-                Grid.Row="1"
-                Margin="40,32,40,18"
-                HeightRequest="320"
-                Stroke="Transparent"
-                VerticalOptions="Center"
-                WidthRequest="320">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="20" />
-                </Border.StrokeShape>
-                <Border.GestureRecognizers>
-                    <SwipeGestureRecognizer Command="{Binding NextCommand}" Direction="Left" />
-                    <SwipeGestureRecognizer Command="{Binding PreviousCommand}" Direction="Right" />
-                </Border.GestureRecognizers>
-                <Grid>
-                    <BoxView Color="{StaticResource SpotifyGray}" />
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource MusicBrandLogo}"
-                        Fill="#333"
-                        Scale="2.5" />
-                    <Image Aspect="AspectFill" Source="{Binding CurrentSong.AlbumArt, Converter={StaticResource ByteArrayToImageSourceConverter}}" />
-                </Grid>
-            </Border>
-
-            <Grid
-                Grid.Row="2"
-                Margin="35,20,35,0"
-                ColumnDefinitions="*, Auto"
-                IsVisible="{Binding IsNotFocusMode}">
-                <VerticalStackLayout VerticalOptions="Center">
-                    <Label
-                        FontAttributes="Bold"
-                        FontSize="28"
-                        MaxLines="1"
-                        Text="{Binding CurrentSong.Title}"
-                        TextColor="White" />
-                    <Label
-                        FontSize="20"
-                        MaxLines="1"
-                        Text="{Binding CurrentSong.Artist}"
-                        TextColor="{StaticResource SpotifyLightGray}" />
-                </VerticalStackLayout>
-                <VerticalStackLayout
-                    Grid.Column="1"
-                    HorizontalOptions="End"
-                    Spacing="6">
-                    <Border
-                        Padding="16"
-                        Stroke="Transparent"
-                        WidthRequest="60">
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding ToggleFavoriteCommand}" CommandParameter="{Binding CurrentSong}" />
-                        </Border.GestureRecognizers>
-                        <Path
-                            Aspect="Uniform"
-                            Data="{StaticResource HeartOutline}"
-                            Fill="{Binding CurrentSong.IsFavorite, Converter={StaticResource FavoriteColorConverter}}">
-                            <Path.Triggers>
-                                <DataTrigger
-                                    Binding="{Binding CurrentSong.IsFavorite}"
-                                    TargetType="Path"
-                                    Value="True">
-                                    <Setter Property="Data" Value="{StaticResource HeartSolid}" />
-                                </DataTrigger>
-                            </Path.Triggers>
-                        </Path>
-                    </Border>
-                    <Border
-                        Padding="8"
-                        BackgroundColor="#1F1F1F"
-                        Stroke="Transparent"
-                        WidthRequest="60">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="10" />
-                        </Border.StrokeShape>
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding ToggleFocusModeCommand}" />
-                        </Border.GestureRecognizers>
-                        <Path
-                            Aspect="Uniform"
-                            Data="{StaticResource FocusIcon}"
-                            Fill="White" />
-                    </Border>
-                </VerticalStackLayout>
-            </Grid>
-
-            <VerticalStackLayout Grid.Row="3" Margin="30,20,30,10">
-                <VerticalStackLayout IsVisible="{Binding IsNotFocusMode}">
-                    <Slider
-                        DragCompleted="OnSliderDragCompleted"
-                        Maximum="{Binding Duration}"
-                        MaximumTrackColor="#333333"
-                        MinimumTrackColor="{StaticResource SpotifyGreen}"
-                        ThumbColor="White"
-                        Value="{Binding CurrentPosition}" />
-                    <Grid ColumnDefinitions="*, *">
-                        <Label
-                            FontSize="12"
-                            Text="{Binding CurrentPosition, Converter={StaticResource TimeSecondsConverter}}"
-                            TextColor="{StaticResource SpotifyLightGray}" />
-                        <Label
+            <ScrollView Grid.RowSpan="4">
+                <VerticalStackLayout Spacing="0">
+                    <Grid Margin="15,42,15,0" ColumnDefinitions="Auto, *, Auto, Auto, Auto">
+                        <Border
+                            Padding="15"
+                            HeightRequest="50"
+                            Stroke="Transparent"
+                            WidthRequest="50">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCloseFullPlayerClicked" />
+                            </Border.GestureRecognizers>
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource ChevronDownIcon}"
+                                Fill="White" />
+                        </Border>
+                        <VerticalStackLayout
                             Grid.Column="1"
-                            FontSize="12"
-                            HorizontalOptions="End"
-                            Text="{Binding Duration, Converter={StaticResource TimeSecondsConverter}}"
-                            TextColor="{StaticResource SpotifyLightGray}" />
-                    </Grid>
-                </VerticalStackLayout>
-
-                <Border
-                    Margin="0,20,0,0"
-                    Padding="20"
-                    BackgroundColor="#1DB954"
-                    HeightRequest="126"
-                    Opacity="0.96"
-                    Stroke="#99FFFFFF">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="16" />
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding ToggleLyricsFullScreenCommand}" />
-                    </Border.GestureRecognizers>
-                    <Grid RowDefinitions="Auto,*" RowSpacing="6">
-                        <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
+                            HorizontalOptions="Center"
+                            Spacing="2"
+                            VerticalOptions="Center">
                             <Label
                                 CharacterSpacing="2"
+                                FontSize="11"
+                                HorizontalOptions="Center"
+                                Text="REPRODUCIENDO"
+                                TextColor="#D7E7DC" />
+                            <Label
                                 FontAttributes="Bold"
-                                FontSize="10"
-                                Text="LETRA"
-                                TextColor="Black" />
-                            <Border
-                                Padding="7,3"
-                                BackgroundColor="#22000000"
-                                Stroke="Transparent">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="9" />
-                                </Border.StrokeShape>
-                                <Label
-                                    FontAttributes="Bold"
-                                    FontSize="10"
-                                    Text="{Binding LyricSyncQuality, StringFormat='{}SYNC {0}'}"
-                                    TextColor="{Binding LyricSyncQualityColor}" />
-                            </Border>
-                            <Border
-                                Padding="5"
-                                BackgroundColor="#22FFFFFF"
-                                Stroke="Transparent">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="8" />
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding DownloadLyricsCommand}" />
-                                </Border.GestureRecognizers>
-                                <Path
-                                    Aspect="Uniform"
-                                    Data="{StaticResource DownloadIcon}"
-                                    Fill="Black"
-                                    HeightRequest="12"
-                                    WidthRequest="12" />
-                            </Border>
-                            <Border
-                                Padding="5"
-                                BackgroundColor="#22FFFFFF"
-                                Stroke="Transparent">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="8" />
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding ReportLyricTimingCommand}" />
-                                </Border.GestureRecognizers>
-                                <Path
-                                    Aspect="Uniform"
-                                    Data="{StaticResource FlagIcon}"
-                                    Fill="Black"
-                                    HeightRequest="12"
-                                    WidthRequest="12" />
-                            </Border>
-                            <Border
-                                Padding="5"
-                                BackgroundColor="#22FFFFFF"
-                                Stroke="Transparent">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="8" />
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding DeleteDownloadedLyricsCommand}" />
-                                </Border.GestureRecognizers>
-                                <Path
-                                    Aspect="Uniform"
-                                    Data="{StaticResource TrashIcon}"
-                                    Fill="Black"
-                                    HeightRequest="12"
-                                    WidthRequest="12" />
-                            </Border>
-                        </HorizontalStackLayout>
-                        <Label
-                            Grid.Row="1"
-                            FontAttributes="Bold"
-                            FontSize="19"
-                            MaxLines="2"
-                            Text="{Binding CurrentLyricLine}"
-                            TextColor="#0E0E0E"
-                            VerticalOptions="Center" />
+                                FontSize="18"
+                                HorizontalOptions="Center"
+                                MaxLines="1"
+                                Text="{Binding ActivePlaylist.Name, TargetNullValue=Tu biblioteca}"
+                                TextColor="White" />
+                        </VerticalStackLayout>
+                        <Border
+                            Grid.Column="2"
+                            Padding="10"
+                            HeightRequest="38"
+                            Stroke="Transparent"
+                            WidthRequest="38">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ShareSongCommand}" />
+                            </Border.GestureRecognizers>
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource ShareIcon}"
+                                Fill="White" />
+                        </Border>
+                        <Border
+                            Grid.Column="3"
+                            Padding="10"
+                            HeightRequest="38"
+                            Stroke="Transparent"
+                            WidthRequest="38">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleQueuePanelCommand}" />
+                            </Border.GestureRecognizers>
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource QueueIcon}"
+                                Fill="White" />
+                        </Border>
                     </Grid>
-                </Border>
-            </VerticalStackLayout>
 
-            <Grid
-                Grid.Row="4"
-                Margin="20,0,20,40"
-                ColumnDefinitions="*, *, *, *, *"
-                VerticalOptions="Center">
-                <Border
-                    Grid.Column="0"
-                    Padding="10"
-                    HeightRequest="52"
-                    HorizontalOptions="Center"
-                    IsVisible="{Binding IsNotFocusMode}"
-                    Stroke="Transparent"
-                    VerticalOptions="Center"
-                    WidthRequest="52">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding ToggleShuffleCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource ShuffleIcon}"
-                        Fill="{Binding IsShuffle, Converter={StaticResource ShuffleColorConverter}}" />
-                </Border>
-                <Border
-                    Grid.Column="1"
-                    Padding="10"
-                    HeightRequest="52"
-                    HorizontalOptions="Center"
-                    Stroke="Transparent"
-                    VerticalOptions="Center"
-                    WidthRequest="52">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding PreviousCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource PrevIcon}"
-                        Fill="White" />
-                </Border>
-                <Border
-                    Grid.Column="2"
-                    Padding="20"
-                    BackgroundColor="White"
-                    HeightRequest="72"
-                    HorizontalOptions="Center"
-                    Stroke="Transparent"
-                    VerticalOptions="Center"
-                    WidthRequest="72">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="36" />
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding TogglePlayPauseCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource PlayIcon}"
-                        Fill="Black">
-                        <Path.Triggers>
-                            <DataTrigger
-                                Binding="{Binding IsPlaying}"
-                                TargetType="Path"
-                                Value="True">
-                                <Setter Property="Data" Value="{StaticResource PauseIcon}" />
-                            </DataTrigger>
-                        </Path.Triggers>
-                    </Path>
-                </Border>
-                <Border
-                    Grid.Column="3"
-                    Padding="10"
-                    HeightRequest="52"
-                    HorizontalOptions="Center"
-                    Stroke="Transparent"
-                    VerticalOptions="Center"
-                    WidthRequest="52">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding NextCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource NextIcon}"
-                        Fill="White" />
-                </Border>
-                <Border
-                    Grid.Column="4"
-                    Padding="10"
-                    HeightRequest="52"
-                    HorizontalOptions="Center"
-                    IsVisible="{Binding IsNotFocusMode}"
-                    Stroke="Transparent"
-                    VerticalOptions="Center"
-                    WidthRequest="52">
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding ToggleRepeatCommand}" />
-                    </Border.GestureRecognizers>
-                    <Grid>
-                        <Path
-                            Aspect="Uniform"
-                            Data="{StaticResource RepeatIcon}"
-                            Fill="{Binding RepeatMode, Converter={StaticResource RepeatColorConverter}}" />
-                        <Label
-                            FontAttributes="Bold"
-                            FontSize="10"
-                            HorizontalOptions="Center"
-                            IsVisible="{Binding RepeatMode, Converter={StaticResource IsRepeatOneConverter}}"
-                            Text="1"
-                            TextColor="{StaticResource SpotifyGreen}"
-                            VerticalOptions="Center" />
+                    <Border
+                        x:Name="FullPlayerArtwork"
+                        Margin="32,28,32,0"
+                        HeightRequest="320"
+                        HorizontalOptions="Center"
+                        Stroke="Transparent"
+                        VerticalOptions="Start"
+                        WidthRequest="320">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="20" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <!--
+                                Lower threshold keeps artwork swipes responsive even after the
+                                full-screen vertical scroll was introduced for the player.
+                            -->
+                            <SwipeGestureRecognizer
+                                Command="{Binding NextCommand}"
+                                Direction="Left"
+                                Threshold="32" />
+                            <SwipeGestureRecognizer
+                                Command="{Binding PreviousCommand}"
+                                Direction="Right"
+                                Threshold="32" />
+                        </Border.GestureRecognizers>
+                        <Grid>
+                            <BoxView Color="{StaticResource SpotifyGray}" />
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource MusicBrandLogo}"
+                                Fill="#333"
+                                Scale="2.5" />
+                            <Image Aspect="AspectFill" Source="{Binding CurrentSong.AlbumArt, Converter={StaticResource ByteArrayToImageSourceConverter}}" />
+                        </Grid>
+                    </Border>
+
+                    <Grid
+                        x:Name="FullPlayerMetadataRow"
+                        Margin="28,18,22,0"
+                        ColumnDefinitions="*, Auto"
+                        ColumnSpacing="16"
+                        IsVisible="{Binding IsNotFocusMode}">
+                        <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                            <ScrollView
+                                x:Name="FullPlayerTitleScroller"
+                                HorizontalScrollBarVisibility="Never"
+                                Orientation="Horizontal">
+                                <Label
+                                    x:Name="FullPlayerTitleLabel"
+                                    FontAttributes="Bold"
+                                    FontSize="26"
+                                    LineBreakMode="NoWrap"
+                                    TextColor="White" />
+                            </ScrollView>
+                            <ScrollView
+                                x:Name="FullPlayerArtistScroller"
+                                HorizontalScrollBarVisibility="Never"
+                                Orientation="Horizontal">
+                                <Label
+                                    x:Name="FullPlayerArtistLabel"
+                                    FontSize="18"
+                                    LineBreakMode="NoWrap"
+                                    TextColor="{StaticResource SpotifyLightGray}" />
+                            </ScrollView>
+                        </VerticalStackLayout>
+                        <VerticalStackLayout
+                            Grid.Column="1"
+                            HorizontalOptions="End"
+                            Spacing="0"
+                            VerticalOptions="Center">
+                            <Border
+                                Padding="10"
+                                Stroke="Transparent"
+                                WidthRequest="40">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ToggleFavoriteCommand}" CommandParameter="{Binding CurrentSong}" />
+                                </Border.GestureRecognizers>
+                                <Path
+                                    Aspect="Uniform"
+                                    Data="{StaticResource HeartOutline}"
+                                    Fill="{Binding CurrentSong.IsFavorite, Converter={StaticResource FavoriteColorConverter}}">
+                                    <Path.Triggers>
+                                        <DataTrigger
+                                            Binding="{Binding CurrentSong.IsFavorite}"
+                                            TargetType="Path"
+                                            Value="True">
+                                            <Setter Property="Data" Value="{StaticResource HeartSolid}" />
+                                        </DataTrigger>
+                                    </Path.Triggers>
+                                </Path>
+                            </Border>
+                        </VerticalStackLayout>
                     </Grid>
-                </Border>
-            </Grid>
+
+                    <VerticalStackLayout Margin="28,20,28,18">
+                        <VerticalStackLayout Spacing="20">
+                            <VerticalStackLayout IsVisible="{Binding IsNotFocusMode}">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="10">
+                                    <Border
+                                        Padding="8"
+                                        BackgroundColor="#1CFFFFFF"
+                                        Stroke="Transparent">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnSleepTimerClicked" />
+                                        </Border.GestureRecognizers>
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="11"
+                                            Text="Dormir"
+                                            TextColor="White" />
+                                    </Border>
+                                    <Label
+                                        Grid.Column="1"
+                                        FontSize="12"
+                                        Text="{Binding SleepTimerStatus}"
+                                        TextColor="{StaticResource SpotifyLightGray}"
+                                        VerticalOptions="Center" />
+                                    <Border
+                                        Grid.Column="2"
+                                        Padding="8"
+                                        BackgroundColor="#15000000"
+                                        Stroke="Transparent">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnQuickSleep15Clicked" />
+                                        </Border.GestureRecognizers>
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="11"
+                                            Text="15"
+                                            TextColor="White" />
+                                    </Border>
+                                    <Border
+                                        Grid.Column="3"
+                                        Padding="8"
+                                        BackgroundColor="#15000000"
+                                        Stroke="Transparent">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnQuickSleep30Clicked" />
+                                        </Border.GestureRecognizers>
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="11"
+                                            Text="30"
+                                            TextColor="White" />
+                                    </Border>
+                                    <Border
+                                        Grid.Column="4"
+                                        Padding="8"
+                                        BackgroundColor="#15000000"
+                                        Stroke="Transparent">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnQuickSleep60Clicked" />
+                                        </Border.GestureRecognizers>
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="11"
+                                            Text="60"
+                                            TextColor="White" />
+                                    </Border>
+                                    <Border
+                                        Grid.Column="5"
+                                        Padding="8"
+                                        BackgroundColor="#15000000"
+                                        IsVisible="{Binding HasSleepTimer}"
+                                        Stroke="Transparent">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnCancelSleepTimerClicked" />
+                                        </Border.GestureRecognizers>
+                                        <Path
+                                            Aspect="Uniform"
+                                            Data="{StaticResource CloseIcon}"
+                                            Fill="White"
+                                            HeightRequest="12"
+                                            WidthRequest="12" />
+                                    </Border>
+                                </Grid>
+                                <Slider
+                                    DragCompleted="OnSliderDragCompleted"
+                                    Maximum="{Binding Duration}"
+                                    MaximumTrackColor="#333333"
+                                    MinimumTrackColor="{StaticResource SpotifyGreen}"
+                                    ThumbColor="White"
+                                    Value="{Binding CurrentPosition}" />
+                                <Grid ColumnDefinitions="*, *">
+                                    <Label
+                                        FontSize="12"
+                                        Text="{Binding CurrentPosition, Converter={StaticResource TimeSecondsConverter}}"
+                                        TextColor="{StaticResource SpotifyLightGray}" />
+                                    <Label
+                                        Grid.Column="1"
+                                        FontSize="12"
+                                        HorizontalOptions="End"
+                                        Text="{Binding Duration, Converter={StaticResource TimeSecondsConverter}}"
+                                        TextColor="{StaticResource SpotifyLightGray}" />
+                                </Grid>
+                            </VerticalStackLayout>
+
+                            <Grid
+                                ColumnDefinitions="*,*,1.4*,*,*,*"
+                                ColumnSpacing="0"
+                                HorizontalOptions="Fill"
+                                VerticalOptions="Center">
+                                <Border
+                                    Grid.Column="0"
+                                    Padding="10"
+                                    HeightRequest="44"
+                                    HorizontalOptions="Center"
+                                    IsVisible="{Binding IsNotFocusMode}"
+                                    Stroke="Transparent"
+                                    VerticalOptions="Center"
+                                    WidthRequest="44">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding ToggleShuffleCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Path
+                                        Aspect="Uniform"
+                                        Data="{StaticResource ShuffleIcon}"
+                                        Fill="{Binding IsShuffle, Converter={StaticResource ShuffleColorConverter}}" />
+                                </Border>
+                                <Border
+                                    Grid.Column="1"
+                                    Padding="10"
+                                    HeightRequest="44"
+                                    HorizontalOptions="Center"
+                                    Stroke="Transparent"
+                                    VerticalOptions="Center"
+                                    WidthRequest="44">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding PreviousCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Path
+                                        Aspect="Uniform"
+                                        Data="{StaticResource PrevIcon}"
+                                        Fill="White" />
+                                </Border>
+                                <Border
+                                    Grid.Column="2"
+                                    Padding="20"
+                                    BackgroundColor="White"
+                                    HeightRequest="72"
+                                    HorizontalOptions="Center"
+                                    Stroke="Transparent"
+                                    VerticalOptions="Center"
+                                    WidthRequest="72">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="36" />
+                                    </Border.StrokeShape>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding TogglePlayPauseCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Path
+                                        Aspect="Uniform"
+                                        Data="{StaticResource PlayIcon}"
+                                        Fill="Black">
+                                        <Path.Triggers>
+                                            <DataTrigger
+                                                Binding="{Binding IsPlaying}"
+                                                TargetType="Path"
+                                                Value="True">
+                                                <Setter Property="Data" Value="{StaticResource PauseIcon}" />
+                                            </DataTrigger>
+                                        </Path.Triggers>
+                                    </Path>
+                                </Border>
+                                <Border
+                                    Grid.Column="3"
+                                    Padding="10"
+                                    HeightRequest="44"
+                                    HorizontalOptions="Center"
+                                    Stroke="Transparent"
+                                    VerticalOptions="Center"
+                                    WidthRequest="44">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding NextCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Path
+                                        Aspect="Uniform"
+                                        Data="{StaticResource NextIcon}"
+                                        Fill="White" />
+                                </Border>
+                                <Border
+                                    Grid.Column="4"
+                                    Padding="10"
+                                    HeightRequest="44"
+                                    HorizontalOptions="Center"
+                                    IsVisible="{Binding IsNotFocusMode}"
+                                    Stroke="Transparent"
+                                    VerticalOptions="Center"
+                                    WidthRequest="44">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding ToggleRepeatCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Grid>
+                                        <Path
+                                            Aspect="Uniform"
+                                            Data="{StaticResource RepeatIcon}"
+                                            Fill="{Binding RepeatMode, Converter={StaticResource RepeatColorConverter}}" />
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="10"
+                                            HorizontalOptions="Center"
+                                            IsVisible="{Binding RepeatMode, Converter={StaticResource IsRepeatOneConverter}}"
+                                            Text="1"
+                                            TextColor="{StaticResource SpotifyGreen}"
+                                            VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                                <Border
+                                    Grid.Column="5"
+                                    Padding="10"
+                                    HeightRequest="44"
+                                    HorizontalOptions="Center"
+                                    IsVisible="{Binding IsNotFocusMode}"
+                                    Stroke="Transparent"
+                                    VerticalOptions="Center"
+                                    WidthRequest="44">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding StopPlaybackCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Path
+                                        Aspect="Uniform"
+                                        Data="{StaticResource StopIcon}"
+                                        Fill="White" />
+                                </Border>
+                            </Grid>
+
+                            <Border
+                                Margin="0,0,0,0"
+                                Padding="16,14"
+                                BackgroundColor="#1AFFFFFF"
+                                HeightRequest="104"
+                                Stroke="#22FFFFFF">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="18" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ToggleLyricsFullScreenCommand}" />
+                                </Border.GestureRecognizers>
+                                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+                                        <Label
+                                            FontAttributes="Bold"
+                                            FontSize="11"
+                                            Text="LETRA"
+                                            TextColor="White" />
+                                        <Border
+                                            Grid.Column="1"
+                                            Padding="7,3"
+                                            BackgroundColor="#16000000"
+                                            Stroke="Transparent">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="9" />
+                                            </Border.StrokeShape>
+                                            <Label
+                                                FontAttributes="Bold"
+                                                FontSize="10"
+                                                Text="{Binding LyricSyncQuality, StringFormat='{}SYNC {0}'}"
+                                                TextColor="{Binding LyricSyncQualityColor}" />
+                                        </Border>
+                                        <Path
+                                            Grid.Column="3"
+                                            Aspect="Uniform"
+                                            Data="{StaticResource ChevronDownIcon}"
+                                            Fill="White"
+                                            HeightRequest="14"
+                                            Rotation="270"
+                                            WidthRequest="14" />
+                                    </Grid>
+                                    <ScrollView
+                                        Grid.Row="1"
+                                        Orientation="Vertical"
+                                        VerticalScrollBarVisibility="Never">
+                                        <VerticalStackLayout Spacing="6">
+                                            <Label
+                                                FontAttributes="Bold"
+                                                FontSize="16"
+                                                MaxLines="2"
+                                                Text="{Binding CurrentLyricLine}"
+                                                TextColor="White" />
+                                            <Label
+                                                FontSize="12"
+                                                Text="Toca para abrir la letra completa"
+                                                TextColor="#B7CBC0" />
+                                        </VerticalStackLayout>
+                                    </ScrollView>
+                                </Grid>
+                            </Border>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
         </Grid>
 
-        <Grid
-            Grid.RowSpan="5"
-            IsVisible="{Binding IsFolderPanelOpen}">
+        <Grid Grid.RowSpan="5" IsVisible="{Binding IsFolderPanelOpen}">
             <BoxView Color="#66000000">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Command="{Binding ToggleFolderPanelCommand}" />
                 </BoxView.GestureRecognizers>
             </BoxView>
             <Border
-                HorizontalOptions="End"
-                WidthRequest="360"
+                Padding="14"
                 BackgroundColor="#151515"
+                HorizontalOptions="End"
                 Stroke="#22FFFFFF"
-                Padding="14">
+                WidthRequest="360">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="0" />
                 </Border.StrokeShape>
@@ -876,15 +985,26 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleFolderPanelCommand}" />
                             </Border.GestureRecognizers>
-                            <Path Aspect="Uniform" Data="{StaticResource BackIcon}" Fill="White" HeightRequest="16" WidthRequest="16" />
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource BackIcon}"
+                                Fill="White"
+                                HeightRequest="16"
+                                WidthRequest="16" />
                         </Border>
-                        <Label Grid.Column="1" Text="Carpetas de música" TextColor="White" FontSize="20" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label
+                            Grid.Column="1"
+                            FontAttributes="Bold"
+                            FontSize="20"
+                            Text="Carpetas de música"
+                            TextColor="White"
+                            VerticalOptions="Center" />
                     </Grid>
                     <Label
                         Grid.Row="1"
                         Margin="0,10,0,8"
-                        Text="Selecciona solo las carpetas que quieres incluir en la biblioteca."
                         FontSize="12"
+                        Text="Selecciona solo las carpetas que quieres incluir en la biblioteca."
                         TextColor="#A8A8A8" />
                     <CollectionView
                         Grid.Row="2"
@@ -892,16 +1012,31 @@
                         SelectionMode="None">
                         <CollectionView.ItemTemplate>
                             <DataTemplate x:DataType="models:ScanFolderItem">
-                                <Border Margin="0,0,0,8" Padding="10" BackgroundColor="#1F1F1F" Stroke="#22FFFFFF">
+                                <Border
+                                    Margin="0,0,0,8"
+                                    Padding="10"
+                                    BackgroundColor="#1F1F1F"
+                                    Stroke="#22FFFFFF">
                                     <Border.StrokeShape>
                                         <RoundRectangle CornerRadius="10" />
                                     </Border.StrokeShape>
                                     <Grid ColumnDefinitions="*,Auto">
                                         <VerticalStackLayout Spacing="2">
-                                            <Label Text="{Binding DisplayName}" TextColor="White" FontAttributes="Bold" FontSize="12" />
-                                            <Label Text="{Binding Path}" TextColor="#AFAFAF" FontSize="10" MaxLines="2" />
+                                            <Label
+                                                FontAttributes="Bold"
+                                                FontSize="12"
+                                                Text="{Binding DisplayName}"
+                                                TextColor="White" />
+                                            <Label
+                                                FontSize="10"
+                                                MaxLines="2"
+                                                Text="{Binding Path}"
+                                                TextColor="#AFAFAF" />
                                         </VerticalStackLayout>
-                                        <Switch Grid.Column="1" IsToggled="{Binding IsSelected}" VerticalOptions="Center" />
+                                        <Switch
+                                            Grid.Column="1"
+                                            IsToggled="{Binding IsSelected}"
+                                            VerticalOptions="Center" />
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -916,20 +1051,18 @@
             </Border>
         </Grid>
 
-        <Grid
-            Grid.RowSpan="5"
-            IsVisible="{Binding IsPlaylistPanelOpen}">
+        <Grid Grid.RowSpan="5" IsVisible="{Binding IsPlaylistPanelOpen}">
             <BoxView Color="#66000000">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Command="{Binding TogglePlaylistPanelCommand}" />
                 </BoxView.GestureRecognizers>
             </BoxView>
             <Border
-                HorizontalOptions="End"
-                WidthRequest="360"
+                Padding="14"
                 BackgroundColor="#151515"
+                HorizontalOptions="End"
                 Stroke="#22FFFFFF"
-                Padding="14">
+                WidthRequest="360">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="0" />
                 </Border.StrokeShape>
@@ -945,15 +1078,26 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding TogglePlaylistPanelCommand}" />
                             </Border.GestureRecognizers>
-                            <Path Aspect="Uniform" Data="{StaticResource BackIcon}" Fill="White" HeightRequest="16" WidthRequest="16" />
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource BackIcon}"
+                                Fill="White"
+                                HeightRequest="16"
+                                WidthRequest="16" />
                         </Border>
-                        <Label Grid.Column="1" Text="Playlists" TextColor="White" FontSize="20" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label
+                            Grid.Column="1"
+                            FontAttributes="Bold"
+                            FontSize="20"
+                            Text="Playlists"
+                            TextColor="White"
+                            VerticalOptions="Center" />
                     </Grid>
                     <Label
                         Grid.Row="1"
                         Margin="0,10,0,8"
-                        Text="{Binding PlaylistSummary}"
                         FontSize="12"
+                        Text="{Binding PlaylistSummary}"
                         TextColor="#A8A8A8" />
                     <Border
                         Grid.Row="2"
@@ -967,22 +1111,29 @@
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                             <Button
                                 Grid.Column="0"
+                                BackgroundColor="#213629"
                                 Clicked="OnCreatePlaylistClicked"
                                 Style="{StaticResource HeroActionButton}"
-                                BackgroundColor="#213629"
                                 Text="Nueva playlist" />
                             <Button
                                 Grid.Column="1"
+                                BackgroundColor="#252525"
                                 Clicked="OnPlayActivePlaylistClicked"
                                 IsEnabled="{Binding ActivePlaylist, Converter={StaticResource IsNotNullConverter}}"
                                 Style="{StaticResource HeroActionButton}"
-                                BackgroundColor="#252525"
                                 Text="Reproducir abierta" />
                         </Grid>
                     </Border>
-                    <Grid Grid.Row="4" RowDefinitions="Auto,*" RowSpacing="10">
+                    <Grid
+                        Grid.Row="4"
+                        RowDefinitions="Auto,*"
+                        RowSpacing="10">
                         <VerticalStackLayout Grid.Row="0" Spacing="8">
-                            <Label Text="Tus listas" TextColor="White" FontAttributes="Bold" FontSize="14" />
+                            <Label
+                                FontAttributes="Bold"
+                                FontSize="14"
+                                Text="Tus listas"
+                                TextColor="White" />
                             <CollectionView
                                 HeightRequest="190"
                                 ItemsSource="{Binding Playlists}"
@@ -1002,8 +1153,15 @@
                                             </Border.GestureRecognizers>
                                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                                                 <VerticalStackLayout Spacing="2">
-                                                    <Label Text="{Binding Name}" TextColor="White" FontAttributes="Bold" FontSize="14" />
-                                                    <Label Text="Toca para abrir y revisar canciones" TextColor="#97A59A" FontSize="10" />
+                                                    <Label
+                                                        FontAttributes="Bold"
+                                                        FontSize="14"
+                                                        Text="{Binding Name}"
+                                                        TextColor="White" />
+                                                    <Label
+                                                        FontSize="10"
+                                                        Text="Toca para abrir y revisar canciones"
+                                                        TextColor="#97A59A" />
                                                 </VerticalStackLayout>
                                                 <Border
                                                     Grid.Column="1"
@@ -1014,7 +1172,10 @@
                                                     <Border.StrokeShape>
                                                         <RoundRectangle CornerRadius="10" />
                                                     </Border.StrokeShape>
-                                                    <Label Text="Abrir" TextColor="#DDFDE8" FontSize="10" />
+                                                    <Label
+                                                        FontSize="10"
+                                                        Text="Abrir"
+                                                        TextColor="#DDFDE8" />
                                                 </Border>
                                             </Grid>
                                         </Border>
@@ -1028,7 +1189,11 @@
                             SelectionMode="None">
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="models:SongItem">
-                                    <Border Margin="0,0,0,8" Padding="10" BackgroundColor="#1F1F1F" Stroke="Transparent">
+                                    <Border
+                                        Margin="0,0,0,8"
+                                        Padding="10"
+                                        BackgroundColor="#1F1F1F"
+                                        Stroke="Transparent">
                                         <Border.StrokeShape>
                                             <RoundRectangle CornerRadius="10" />
                                         </Border.StrokeShape>
@@ -1044,8 +1209,17 @@
                                                 HeightRequest="14"
                                                 WidthRequest="14" />
                                             <VerticalStackLayout Grid.Column="1" Spacing="1">
-                                                <Label Text="{Binding Title}" TextColor="White" FontAttributes="Bold" FontSize="12" MaxLines="1" />
-                                                <Label Text="{Binding Artist}" TextColor="#ADADAD" FontSize="10" MaxLines="1" />
+                                                <Label
+                                                    FontAttributes="Bold"
+                                                    FontSize="12"
+                                                    MaxLines="1"
+                                                    Text="{Binding Title}"
+                                                    TextColor="White" />
+                                                <Label
+                                                    FontSize="10"
+                                                    MaxLines="1"
+                                                    Text="{Binding Artist}"
+                                                    TextColor="#ADADAD" />
                                             </VerticalStackLayout>
                                         </Grid>
                                     </Border>
@@ -1057,21 +1231,20 @@
             </Border>
         </Grid>
 
-        <Grid
-            Grid.RowSpan="5"
-            IsVisible="{Binding IsDiscoverPanelOpen}">
+        <Grid Grid.RowSpan="5" IsVisible="{Binding IsDiscoverPanelOpen}">
             <BoxView Color="#66000000">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Command="{Binding ToggleDiscoverPanelCommand}" />
                 </BoxView.GestureRecognizers>
             </BoxView>
             <Border
-                HorizontalOptions="End"
-                WidthRequest="320"
+                x:Name="DiscoverPanel"
                 Margin="0,0,0,0"
+                Padding="14"
                 BackgroundColor="#151515"
+                HorizontalOptions="End"
                 Stroke="#22FFFFFF"
-                Padding="14">
+                WidthRequest="320">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="0" />
                 </Border.StrokeShape>
@@ -1087,28 +1260,74 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleDiscoverPanelCommand}" />
                             </Border.GestureRecognizers>
-                            <Path Aspect="Uniform" Data="{StaticResource BackIcon}" Fill="White" HeightRequest="16" WidthRequest="16" />
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource BackIcon}"
+                                Fill="White"
+                                HeightRequest="16"
+                                WidthRequest="16" />
                         </Border>
-                        <Label Grid.Column="1" Text="Descubrir" TextColor="White" FontSize="20" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label
+                            Grid.Column="1"
+                            FontAttributes="Bold"
+                            FontSize="20"
+                            Text="Descubrir"
+                            TextColor="White"
+                            VerticalOptions="Center" />
                     </Grid>
-                    <VerticalStackLayout Grid.Row="1" Margin="0,12,0,10" Spacing="6">
-                        <Label Text="Recomendadas" FontSize="12" CharacterSpacing="1.2" TextColor="#A8A8A8" />
-                        <CollectionView HeightRequest="120" ItemsLayout="HorizontalList" ItemsSource="{Binding RecommendedSongs}" SelectionMode="None">
+                    <VerticalStackLayout
+                        Grid.Row="1"
+                        Margin="0,12,0,10"
+                        Spacing="6">
+                        <Label
+                            CharacterSpacing="1.2"
+                            FontSize="12"
+                            Text="Recomendadas"
+                            TextColor="#A8A8A8" />
+                        <CollectionView
+                            HeightRequest="120"
+                            ItemsLayout="HorizontalList"
+                            ItemsSource="{Binding RecommendedSongs}"
+                            SelectionMode="None">
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="models:SongItem">
-                                    <Border Margin="0,0,10,0" Padding="8" BackgroundColor="#1E1E1E" Stroke="Transparent" WidthRequest="150">
-                                        <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                    <Border
+                                        Margin="0,0,10,0"
+                                        Padding="8"
+                                        BackgroundColor="#1E1E1E"
+                                        Stroke="Transparent"
+                                        WidthRequest="150">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainViewModel}}, Path=PlaySongCommand}" CommandParameter="{Binding .}" />
                                         </Border.GestureRecognizers>
                                         <Grid ColumnDefinitions="34,*">
-                                            <Border HeightRequest="34" WidthRequest="34" BackgroundColor="#272727" Stroke="Transparent">
-                                                <Border.StrokeShape><RoundRectangle CornerRadius="5" /></Border.StrokeShape>
+                                            <Border
+                                                BackgroundColor="#272727"
+                                                HeightRequest="34"
+                                                Stroke="Transparent"
+                                                WidthRequest="34">
+                                                <Border.StrokeShape>
+                                                    <RoundRectangle CornerRadius="5" />
+                                                </Border.StrokeShape>
                                                 <Image Aspect="AspectFill" Source="{Binding AlbumArt, Converter={StaticResource ByteArrayToImageSourceConverter}}" />
                                             </Border>
-                                            <VerticalStackLayout Grid.Column="1" Margin="8,0,0,0" VerticalOptions="Center">
-                                                <Label Text="{Binding Title}" TextColor="White" FontSize="11" MaxLines="1" />
-                                                <Label Text="{Binding Artist}" TextColor="#ADADAD" FontSize="10" MaxLines="1" />
+                                            <VerticalStackLayout
+                                                Grid.Column="1"
+                                                Margin="8,0,0,0"
+                                                VerticalOptions="Center">
+                                                <Label
+                                                    FontSize="11"
+                                                    MaxLines="1"
+                                                    Text="{Binding Title}"
+                                                    TextColor="White" />
+                                                <Label
+                                                    FontSize="10"
+                                                    MaxLines="1"
+                                                    Text="{Binding Artist}"
+                                                    TextColor="#ADADAD" />
                                             </VerticalStackLayout>
                                         </Grid>
                                     </Border>
@@ -1117,23 +1336,50 @@
                         </CollectionView>
                     </VerticalStackLayout>
                     <VerticalStackLayout Grid.Row="2" Spacing="6">
-                        <Label Text="Continuar escuchando" FontSize="12" CharacterSpacing="1.2" TextColor="#A8A8A8" />
+                        <Label
+                            CharacterSpacing="1.2"
+                            FontSize="12"
+                            Text="Continuar escuchando"
+                            TextColor="#A8A8A8" />
                         <CollectionView ItemsSource="{Binding ContinueListeningSongs}" SelectionMode="None">
                             <CollectionView.ItemTemplate>
                                 <DataTemplate x:DataType="models:SongItem">
-                                    <Border Margin="0,0,0,8" Padding="8" BackgroundColor="#1F1F1F" Stroke="Transparent">
-                                        <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                    <Border
+                                        Margin="0,0,0,8"
+                                        Padding="8"
+                                        BackgroundColor="#1F1F1F"
+                                        Stroke="Transparent">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:MainViewModel}}, Path=PlaySongCommand}" CommandParameter="{Binding .}" />
                                         </Border.GestureRecognizers>
                                         <Grid ColumnDefinitions="34,*">
-                                            <Border HeightRequest="34" WidthRequest="34" BackgroundColor="#272727" Stroke="Transparent">
-                                                <Border.StrokeShape><RoundRectangle CornerRadius="5" /></Border.StrokeShape>
+                                            <Border
+                                                BackgroundColor="#272727"
+                                                HeightRequest="34"
+                                                Stroke="Transparent"
+                                                WidthRequest="34">
+                                                <Border.StrokeShape>
+                                                    <RoundRectangle CornerRadius="5" />
+                                                </Border.StrokeShape>
                                                 <Image Aspect="AspectFill" Source="{Binding AlbumArt, Converter={StaticResource ByteArrayToImageSourceConverter}}" />
                                             </Border>
-                                            <VerticalStackLayout Grid.Column="1" Margin="8,0,0,0" VerticalOptions="Center">
-                                                <Label Text="{Binding Title}" TextColor="White" FontSize="12" MaxLines="1" />
-                                                <Label Text="{Binding Artist}" TextColor="#AFAFAF" FontSize="10" MaxLines="1" />
+                                            <VerticalStackLayout
+                                                Grid.Column="1"
+                                                Margin="8,0,0,0"
+                                                VerticalOptions="Center">
+                                                <Label
+                                                    FontSize="12"
+                                                    MaxLines="1"
+                                                    Text="{Binding Title}"
+                                                    TextColor="White" />
+                                                <Label
+                                                    FontSize="10"
+                                                    MaxLines="1"
+                                                    Text="{Binding Artist}"
+                                                    TextColor="#AFAFAF" />
                                             </VerticalStackLayout>
                                         </Grid>
                                     </Border>
@@ -1145,20 +1391,19 @@
             </Border>
         </Grid>
 
-        <Grid
-            Grid.RowSpan="5"
-            IsVisible="{Binding IsQueuePanelOpen}">
+        <Grid Grid.RowSpan="5" IsVisible="{Binding IsQueuePanelOpen}">
             <BoxView Color="#66000000">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Command="{Binding ToggleQueuePanelCommand}" />
                 </BoxView.GestureRecognizers>
             </BoxView>
             <Border
-                HorizontalOptions="End"
-                WidthRequest="340"
+                x:Name="QueuePanel"
+                Padding="14"
                 BackgroundColor="#141414"
+                HorizontalOptions="End"
                 Stroke="#2DFFFFFF"
-                Padding="14">
+                WidthRequest="340">
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="0" />
                 </Border.StrokeShape>
@@ -1174,21 +1419,26 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleQueuePanelCommand}" />
                             </Border.GestureRecognizers>
-                            <Path Aspect="Uniform" Data="{StaticResource BackIcon}" Fill="White" HeightRequest="16" WidthRequest="16" />
+                            <Path
+                                Aspect="Uniform"
+                                Data="{StaticResource BackIcon}"
+                                Fill="White"
+                                HeightRequest="16"
+                                WidthRequest="16" />
                         </Border>
                         <Label
                             Grid.Column="1"
-                            Text="Cola actual"
-                            FontSize="20"
                             FontAttributes="Bold"
+                            FontSize="20"
+                            Text="Cola actual"
                             TextColor="White"
                             VerticalOptions="Center" />
                     </Grid>
                     <Label
                         Grid.Row="1"
                         Margin="0,10,0,8"
-                        Text="Mantén pulsado y arrastra para reordenar"
                         FontSize="11"
+                        Text="Mantén pulsado y arrastra para reordenar"
                         TextColor="#A8A8A8" />
                     <CollectionView
                         x:Name="QueueCollectionView"
@@ -1211,8 +1461,8 @@
                                     </Border.GestureRecognizers>
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <Label
-                                            Text="≡"
                                             FontSize="18"
+                                            Text="≡"
                                             TextColor="#9ADCAE"
                                             VerticalOptions="Center" />
                                         <VerticalStackLayout
@@ -1220,15 +1470,15 @@
                                             Margin="10,0,8,0"
                                             VerticalOptions="Center">
                                             <Label
-                                                Text="{Binding Title}"
                                                 FontAttributes="Bold"
                                                 FontSize="12"
                                                 MaxLines="1"
+                                                Text="{Binding Title}"
                                                 TextColor="White" />
                                             <Label
-                                                Text="{Binding Artist}"
                                                 FontSize="10"
                                                 MaxLines="1"
+                                                Text="{Binding Artist}"
                                                 TextColor="#AFAFAF" />
                                         </VerticalStackLayout>
                                         <Border
@@ -1356,9 +1606,7 @@
                 <Border.StrokeShape>
                     <RoundRectangle CornerRadius="12" />
                 </Border.StrokeShape>
-                <Grid
-                    ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto"
-                    RowDefinitions="Auto,Auto">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
                     <Label
                         Grid.Row="0"
                         Grid.Column="0"
@@ -1397,8 +1645,8 @@
                         Value="{Binding LyricLeadMs}" />
                     <Button
                         Grid.Row="0"
-                        Grid.Column="2"
                         Grid.RowSpan="2"
+                        Grid.Column="2"
                         Margin="6,0,0,0"
                         BackgroundColor="#28000000"
                         Command="{Binding DecreaseLyricsFontSizeCommand}"
@@ -1410,8 +1658,8 @@
                         WidthRequest="44" />
                     <Button
                         Grid.Row="0"
-                        Grid.Column="3"
                         Grid.RowSpan="2"
+                        Grid.Column="3"
                         Margin="6,0,0,0"
                         BackgroundColor="#28000000"
                         Command="{Binding IncreaseLyricsFontSizeCommand}"
@@ -1423,8 +1671,8 @@
                         WidthRequest="44" />
                     <Button
                         Grid.Row="0"
-                        Grid.Column="4"
                         Grid.RowSpan="2"
+                        Grid.Column="4"
                         Margin="6,0,0,0"
                         BackgroundColor="#28000000"
                         Command="{Binding ToggleHighContrastLyricsCommand}"
@@ -1436,8 +1684,8 @@
                         WidthRequest="48" />
                     <Button
                         Grid.Row="0"
-                        Grid.Column="5"
                         Grid.RowSpan="2"
+                        Grid.Column="5"
                         Margin="6,0,0,0"
                         BackgroundColor="#28000000"
                         Command="{Binding ReportLyricTimingCommand}"
@@ -1449,8 +1697,8 @@
                         WidthRequest="46" />
                     <Border
                         Grid.Row="0"
-                        Grid.Column="6"
                         Grid.RowSpan="2"
+                        Grid.Column="6"
                         Margin="6,0,0,0"
                         Padding="10"
                         BackgroundColor="#28000000"
