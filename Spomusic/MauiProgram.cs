@@ -20,6 +20,8 @@ namespace Spomusic
                 });
 
             builder.Services.AddSingleton<IMusicService, AndroidMusicService>();
+            builder.Services.AddSingleton<ILyricAlignmentEngine, EmbeddedLyricAlignmentEngine>();
+            builder.Services.AddSingleton<IAppUpdateService, GitHubReleaseUpdateService>();
             builder.Services.AddSingleton<DatabaseService>();
             builder.Services.AddSingleton<MusicScannerService>();
             builder.Services.AddSingleton<MainViewModel>();

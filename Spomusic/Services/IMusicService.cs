@@ -1,5 +1,6 @@
 using Spomusic.Models;
 using System.Collections.Generic;
+using System;
 
 namespace Spomusic.Services
 {
@@ -7,6 +8,8 @@ namespace Spomusic.Services
     {
         public int Index { get; set; }
         public TimeSpan Time { get; set; }
+        public TimeSpan OriginalTime { get; set; }
+        public bool HasExplicitTiming { get; set; }
         public string Text { get; set; } = string.Empty;
     }
 

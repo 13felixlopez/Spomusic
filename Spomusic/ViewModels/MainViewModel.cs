@@ -58,7 +58,6 @@ namespace Spomusic.ViewModels
         [ObservableProperty] private string _lyricSyncQualityColor = "#FF8A80";
         [ObservableProperty] private int _currentLyricOffsetMs = 0;
         [ObservableProperty] private string _syncStatus = string.Empty;
-        private bool _autoSyncAttempted = false;
         private List<int> _tapSamples = new();
 
         [ObservableProperty] private bool _isRecordingTaps;
@@ -68,6 +67,7 @@ namespace Spomusic.ViewModels
         [ObservableProperty] private string _sleepTimerStatus = string.Empty;
 
         public bool IsNotFocusMode => !IsFocusMode;
+        public bool HasInitialized => _hasInitialized;
         public bool HasSleepTimer => !string.IsNullOrWhiteSpace(SleepTimerStatus);
         public int TotalSongs => Songs.Count;
         public int FavoriteSongsCount => Songs.Count(s => s.IsFavorite);
@@ -102,7 +102,7 @@ namespace Spomusic.ViewModels
 
             RepeatMode = _musicService.RepeatMode;
 
-            _musicService.OnSongChanged += song =>
+            _musicService.OnSongChanged += song => MainThread.BeginInvokeOnMainThread(() =>
             {
                 CurrentSong = song;
                 if (song == null)
@@ -121,17 +121,14 @@ namespace Spomusic.ViewModels
                 FullLyrics = new ObservableCollection<LyricLine>(_musicService.CurrentLyrics);
                 BuildWordProgressFormattedLyric();
                 UpdateLyricSyncQuality();
-                // Reset auto-sync flag when song changes
-                _autoSyncAttempted = false;
-                // Intentamos auto-sync automáticamente para letras de calidad baja/media
                 _ = TryAutoSyncIfNeededAsync();
                 _ = LoadKaraokePresetForCurrentSongAsync();
                 _ = LoadRecommendationsAsync();
                 _ = LoadContinueListeningAsync();
-            };
+            });
 
-            _musicService.OnPlaybackStatusChanged += status => IsPlaying = status;
-            _musicService.OnPositionChanged += pos =>
+            _musicService.OnPlaybackStatusChanged += status => MainThread.BeginInvokeOnMainThread(() => IsPlaying = status);
+            _musicService.OnPositionChanged += pos => MainThread.BeginInvokeOnMainThread(() =>
             {
                 CurrentPosition = pos.TotalSeconds;
                 CurrentLyricLine = _musicService.CurrentLyricLine;
@@ -143,14 +140,14 @@ namespace Spomusic.ViewModels
 
                 if (FullLyrics.Count == 0 && _musicService.CurrentLyrics.Count > 0)
                     FullLyrics = new ObservableCollection<LyricLine>(_musicService.CurrentLyrics);
-            };
+            });
 
-            _musicService.OnLyricIndexChanged += index => RequestScrollToLyric?.Invoke(index);
-            _musicService.OnLyricProgressChanged += progress =>
+            _musicService.OnLyricIndexChanged += index => MainThread.BeginInvokeOnMainThread(() => RequestScrollToLyric?.Invoke(index));
+            _musicService.OnLyricProgressChanged += progress => MainThread.BeginInvokeOnMainThread(() =>
             {
                 CurrentLyricWordProgress = progress;
                 BuildWordProgressFormattedLyric();
-            };
+            });
 
             _musicService.OnQueueChanged += queue =>
             {
@@ -171,6 +168,7 @@ namespace Spomusic.ViewModels
                 });
             };
 
+            SyncPlaybackSnapshot();
         }
 
         [RelayCommand]
@@ -178,6 +176,7 @@ namespace Spomusic.ViewModels
         {
             if (_hasInitialized) return;
             _hasInitialized = true;
+            SyncPlaybackSnapshot();
 
             var cachedSongs = await _databaseService.GetSongsAsync();
             var savedFolders = await _databaseService.GetScanFoldersAsync();
@@ -201,6 +200,28 @@ namespace Spomusic.ViewModels
             await LoadRecommendationsAsync();
             await LoadContinueListeningAsync();
             await LoadSongsAsync();
+        }
+
+        public void SyncPlaybackSnapshot()
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                CurrentSong = _musicService.CurrentSong;
+                IsPlaying = _musicService.IsPlaying;
+                CurrentPosition = _musicService.CurrentPosition.TotalSeconds;
+                Duration = _musicService.Duration.TotalSeconds;
+                CurrentLyricLine = _musicService.CurrentLyricLine;
+                CurrentLyricIndex = _musicService.CurrentLyricIndex;
+                CurrentLyricWordProgress = _musicService.CurrentLyricWordProgress;
+                CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+                LyricLeadMs = _musicService.LyricLeadMs;
+                RepeatMode = _musicService.RepeatMode;
+                IsShuffle = _musicService.IsShuffle;
+                FullLyrics = new ObservableCollection<LyricLine>(_musicService.CurrentLyrics);
+                QueueSongs = new ObservableCollection<SongItem>(_musicService.GetQueueSnapshot());
+                BuildWordProgressFormattedLyric();
+                UpdateLyricSyncQuality();
+            });
         }
 
         [RelayCommand]
@@ -404,16 +425,6 @@ namespace Spomusic.ViewModels
         public async Task TapSync()
         {
             if (!IsTimingSyncMode) return;
-            // Intentamos primero sincronización automática y luego registramos un tap como respaldo
-            try
-            {
-                await _musicService.AutoSyncLyricsAsync();
-            }
-            catch
-            {
-                // No bloquear la UX si falla
-            }
-
             try
             {
                 await _musicService.RegisterTimingTapAsync();
@@ -431,17 +442,7 @@ namespace Spomusic.ViewModels
         public async Task AutoSyncNow()
         {
             if (CurrentSong == null) return;
-            SyncStatus = "Auto-sync...";
-            try
-            {
-                await _musicService.AutoSyncLyricsAsync();
-                CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
-                SyncStatus = $"Auto-sync aplicado ({CurrentLyricOffsetMs} ms)";
-            }
-            catch
-            {
-                SyncStatus = "Auto-sync fallido";
-            }
+            SyncStatus = "Auto-sync automático desactivado";
             UpdateLyricSyncQuality();
             await Task.Delay(1200);
             SyncStatus = string.Empty;
@@ -480,28 +481,9 @@ namespace Spomusic.ViewModels
             await App.Current!.Windows[0].Page!.DisplayAlert("Offset aplicado", $"Offset guardado: {offsetMs} ms", "OK");
         }
 
-        private async Task TryAutoSyncIfNeededAsync()
+        private Task TryAutoSyncIfNeededAsync()
         {
-            if (CurrentSong == null) return;
-            if (_autoSyncAttempted) return;
-            if (LyricSyncQuality == "Alta") return;
-
-            _autoSyncAttempted = true;
-            SyncStatus = "Intentando sincronización automática...";
-            try
-            {
-                await _musicService.AutoSyncLyricsAsync();
-                CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
-                SyncStatus = "Sincronización automática aplicada";
-            }
-            catch
-            {
-                SyncStatus = "Sincronización automática fallida";
-            }
-
-            UpdateLyricSyncQuality();
-            await Task.Delay(1200);
-            SyncStatus = string.Empty;
+            return Task.CompletedTask;
         }
 
         [RelayCommand]

@@ -1,5 +1,6 @@
 using SQLite;
 using Spomusic.Models;
+using System.Text.Json;
 
 namespace Spomusic.Services
 {
@@ -62,7 +63,37 @@ namespace Spomusic.Services
         [PrimaryKey]
         public string SongKey { get; set; } = string.Empty;
         public int OffsetMs { get; set; }
+        public int? ManualOffsetMs { get; set; }
+        public int? AutoOffsetMs { get; set; }
         public long UpdatedUtcTicks { get; set; }
+    }
+
+    public sealed class LyricTimingState
+    {
+        public int EffectiveOffsetMs { get; init; }
+        public bool HasManualOverride { get; init; }
+        public bool HasAutoOverride { get; init; }
+    }
+
+    public class VerifiedLyricAlignment
+    {
+        [PrimaryKey]
+        public string SongKey { get; set; } = string.Empty;
+        [Indexed]
+        public string LyricHash { get; set; } = string.Empty;
+        public string Mode { get; set; } = "Original";
+        public double ConfidenceScore { get; set; }
+        public string LineTimingsJson { get; set; } = string.Empty;
+        public long CreatedUtcTicks { get; set; }
+        public long UpdatedUtcTicks { get; set; }
+    }
+
+    public sealed class VerifiedLyricAlignmentState
+    {
+        public string Mode { get; init; } = "Original";
+        public double ConfidenceScore { get; init; }
+        public IReadOnlyList<long> LineTimingsMs { get; init; } = Array.Empty<long>();
+        public bool HasUsableAlignment => string.Equals(Mode, "Aligned", StringComparison.OrdinalIgnoreCase) && LineTimingsMs.Count > 0;
     }
 
     public class KaraokePreset
@@ -106,6 +137,7 @@ namespace Spomusic.Services
             await _database.CreateTableAsync<AlbumArtCache>();
             await _database.CreateTableAsync<PlaybackResumeState>();
             await _database.CreateTableAsync<LyricTimingOverride>();
+            await _database.CreateTableAsync<VerifiedLyricAlignment>();
             await _database.CreateTableAsync<KaraokePreset>();
             await _database.CreateTableAsync<Playlist>();
             await _database.CreateTableAsync<PlaylistSong>();
@@ -117,6 +149,14 @@ namespace Spomusic.Services
             await EnsureColumnAsync("SongItem", "SearchIndex", "TEXT NOT NULL DEFAULT ''");
             await EnsureColumnAsync("LyricCache", "LastFetchedUtcTicks", "INTEGER NOT NULL DEFAULT 0");
             await EnsureColumnAsync("LyricCache", "ExpiresUtcTicks", "INTEGER NOT NULL DEFAULT 0");
+            await EnsureColumnAsync("LyricTimingOverride", "ManualOffsetMs", "INTEGER NULL");
+            await EnsureColumnAsync("LyricTimingOverride", "AutoOffsetMs", "INTEGER NULL");
+            await EnsureColumnAsync("VerifiedLyricAlignment", "LyricHash", "TEXT NOT NULL DEFAULT ''");
+            await EnsureColumnAsync("VerifiedLyricAlignment", "Mode", "TEXT NOT NULL DEFAULT 'Original'");
+            await EnsureColumnAsync("VerifiedLyricAlignment", "ConfidenceScore", "REAL NOT NULL DEFAULT 0");
+            await EnsureColumnAsync("VerifiedLyricAlignment", "LineTimingsJson", "TEXT NOT NULL DEFAULT ''");
+            await EnsureColumnAsync("VerifiedLyricAlignment", "CreatedUtcTicks", "INTEGER NOT NULL DEFAULT 0");
+            await EnsureColumnAsync("VerifiedLyricAlignment", "UpdatedUtcTicks", "INTEGER NOT NULL DEFAULT 0");
         }
 
         private async Task EnsureColumnAsync(string tableName, string columnName, string definition)
@@ -458,6 +498,11 @@ namespace Spomusic.Services
 
         public async Task SetLyricTimingOffsetAsync(string songKey, int offsetMs)
         {
+            await SetManualLyricTimingOffsetAsync(songKey, offsetMs);
+        }
+
+        public async Task SetManualLyricTimingOffsetAsync(string songKey, int offsetMs)
+        {
             await Init();
             var row = await _database!.Table<LyricTimingOverride>().FirstOrDefaultAsync(x => x.SongKey == songKey);
             if (row == null)
@@ -466,22 +511,162 @@ namespace Spomusic.Services
                 {
                     SongKey = songKey,
                     OffsetMs = offsetMs,
+                    ManualOffsetMs = offsetMs,
+                    AutoOffsetMs = null,
                     UpdatedUtcTicks = DateTime.UtcNow.Ticks
                 };
                 await _database.InsertAsync(row);
                 return;
             }
 
-            row.OffsetMs = offsetMs;
+            row.ManualOffsetMs = offsetMs == 0 ? null : offsetMs;
+            if (offsetMs == 0)
+            {
+                row.AutoOffsetMs = null;
+                row.OffsetMs = 0;
+            }
+            else
+            {
+                row.OffsetMs = offsetMs;
+            }
+            row.UpdatedUtcTicks = DateTime.UtcNow.Ticks;
+            await _database.UpdateAsync(row);
+        }
+
+        public async Task SetAutoLyricTimingOffsetAsync(string songKey, int offsetMs)
+        {
+            await Init();
+            var row = await _database!.Table<LyricTimingOverride>().FirstOrDefaultAsync(x => x.SongKey == songKey);
+            if (row == null)
+            {
+                row = new LyricTimingOverride
+                {
+                    SongKey = songKey,
+                    OffsetMs = offsetMs,
+                    ManualOffsetMs = null,
+                    AutoOffsetMs = offsetMs,
+                    UpdatedUtcTicks = DateTime.UtcNow.Ticks
+                };
+                await _database.InsertAsync(row);
+                return;
+            }
+
+            row.AutoOffsetMs = offsetMs;
+            row.OffsetMs = ResolveEffectiveOffset(row);
             row.UpdatedUtcTicks = DateTime.UtcNow.Ticks;
             await _database.UpdateAsync(row);
         }
 
         public async Task<int> GetLyricTimingOffsetAsync(string songKey)
         {
+            var state = await GetLyricTimingStateAsync(songKey);
+            return state.EffectiveOffsetMs;
+        }
+
+        public async Task<LyricTimingState> GetLyricTimingStateAsync(string songKey)
+        {
             await Init();
             var row = await _database!.Table<LyricTimingOverride>().FirstOrDefaultAsync(x => x.SongKey == songKey);
-            return row?.OffsetMs ?? 0;
+            if (row == null)
+            {
+                return new LyricTimingState
+                {
+                    EffectiveOffsetMs = 0,
+                    HasManualOverride = false,
+                    HasAutoOverride = false
+                };
+            }
+
+            var hasManual = row.ManualOffsetMs.HasValue || (!row.ManualOffsetMs.HasValue && !row.AutoOffsetMs.HasValue && row.OffsetMs != 0);
+            var hasAuto = row.AutoOffsetMs.HasValue;
+
+            return new LyricTimingState
+            {
+                EffectiveOffsetMs = ResolveEffectiveOffset(row),
+                HasManualOverride = hasManual,
+                HasAutoOverride = hasAuto
+            };
+        }
+
+        private static int ResolveEffectiveOffset(LyricTimingOverride row)
+        {
+            if (row.ManualOffsetMs.HasValue)
+                return row.ManualOffsetMs.Value;
+
+            if (row.AutoOffsetMs.HasValue)
+                return row.AutoOffsetMs.Value;
+
+            return row.OffsetMs;
+        }
+
+        public async Task<VerifiedLyricAlignmentState?> GetVerifiedLyricAlignmentAsync(string songKey, string lyricHash)
+        {
+            await Init();
+            var row = await _database!.Table<VerifiedLyricAlignment>().FirstOrDefaultAsync(x => x.SongKey == songKey);
+            if (row == null)
+                return null;
+
+            if (!string.Equals(row.LyricHash, lyricHash, StringComparison.Ordinal))
+                return null;
+
+            IReadOnlyList<long> timings = Array.Empty<long>();
+            if (!string.IsNullOrWhiteSpace(row.LineTimingsJson))
+            {
+                try
+                {
+                    var parsed = JsonSerializer.Deserialize<List<long>>(row.LineTimingsJson);
+                    timings = parsed != null ? parsed : Array.Empty<long>();
+                }
+                catch
+                {
+                    timings = Array.Empty<long>();
+                }
+            }
+
+            return new VerifiedLyricAlignmentState
+            {
+                Mode = row.Mode,
+                ConfidenceScore = row.ConfidenceScore,
+                LineTimingsMs = timings
+            };
+        }
+
+        public async Task SaveVerifiedLyricAlignmentAsync(string songKey, string lyricHash, string mode, double confidenceScore, IReadOnlyList<long> lineTimingsMs)
+        {
+            await Init();
+            var now = DateTime.UtcNow.Ticks;
+            var payload = JsonSerializer.Serialize(lineTimingsMs);
+            var row = await _database!.Table<VerifiedLyricAlignment>().FirstOrDefaultAsync(x => x.SongKey == songKey);
+            if (row == null)
+            {
+                row = new VerifiedLyricAlignment
+                {
+                    SongKey = songKey,
+                    LyricHash = lyricHash,
+                    Mode = mode,
+                    ConfidenceScore = confidenceScore,
+                    LineTimingsJson = payload,
+                    CreatedUtcTicks = now,
+                    UpdatedUtcTicks = now
+                };
+                await _database.InsertAsync(row);
+                return;
+            }
+
+            row.LyricHash = lyricHash;
+            row.Mode = mode;
+            row.ConfidenceScore = confidenceScore;
+            row.LineTimingsJson = payload;
+            if (row.CreatedUtcTicks == 0)
+                row.CreatedUtcTicks = now;
+            row.UpdatedUtcTicks = now;
+            await _database.UpdateAsync(row);
+        }
+
+        public async Task DeleteVerifiedLyricAlignmentAsync(string songKey)
+        {
+            await Init();
+            await _database!.DeleteAsync<VerifiedLyricAlignment>(songKey);
         }
 
         public async Task<Dictionary<string, int>> GetTopSongScoresAsync(int days = 30, int limit = 20)

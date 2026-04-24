@@ -1,5 +1,6 @@
 using Spomusic.ViewModels;
 using Spomusic.Models;
+using Spomusic.Services;
 using System.ComponentModel;
 using Microsoft.Maui.Devices;
 
@@ -8,6 +9,7 @@ namespace Spomusic
     public partial class MainPage : ContentPage
     {
         private MainViewModel ViewModel => (MainViewModel)BindingContext;
+        private readonly IAppUpdateService _appUpdateService;
         private int _lastScrolledLyricIndex = -1;
         private CancellationTokenSource? _lyricsScrollCts;
         private CancellationTokenSource? _metadataMarqueeCts;
@@ -16,12 +18,16 @@ namespace Spomusic
         private bool _isLibraryHeroAnimating;
         private double _libraryHeroExpandedHeight = -1;
         private double _libraryHeroCollapsedHeight = 118;
+        private bool _isPermissionFlowRunning;
+        private bool _hasMediaPermission;
+        private bool _hasCheckedForUpdates;
         private const string MarqueeSeparator = "     •     ";
 
-        public MainPage(MainViewModel viewModel)
+        public MainPage(MainViewModel viewModel, IAppUpdateService appUpdateService)
         {
             InitializeComponent();
             BindingContext = viewModel;
+            _appUpdateService = appUpdateService;
             
             // Logica de auto-scroll para letras
             ViewModel.RequestScrollToLyric += (index) => {
@@ -38,6 +44,10 @@ namespace Spomusic
             // Mantiene estable el reproductor principal en distintos anchos
             // recalculando las superficies mas grandes desde el viewport real.
             SizeChanged += OnPageSizeChanged;
+
+#if ANDROID
+            MainActivity.ActivityResumed += OnAndroidActivityResumed;
+#endif
         }
 
         // Mostrar un pequeño menú modal (ActionSheet) con opciones de sincronización manual
@@ -144,7 +154,14 @@ namespace Spomusic
             base.OnAppearing();
             ApplyResponsiveLayout(Width);
             ApplyLibraryHeroVisualStateImmediate();
-            await CheckAndRequestPermissions();
+            ViewModel.SyncPlaybackSnapshot();
+            await EnsureAudioPermissionAsync(requestIfNeeded: true, openSettingsWhenDenied: true);
+
+            if (!_hasCheckedForUpdates)
+            {
+                _hasCheckedForUpdates = true;
+                await CheckForUpdatesAsync();
+            }
         }
 
         // Manejo del botón "Atrás" (hardware / navigation back).
@@ -398,39 +415,101 @@ namespace Spomusic
         private static double Lerp(double start, double end, double progress)
             => start + ((end - start) * progress);
 
-        private async Task CheckAndRequestPermissions()
+        private async Task EnsureAudioPermissionAsync(bool requestIfNeeded, bool openSettingsWhenDenied)
         {
-            PermissionStatus status = PermissionStatus.Unknown;
+            if (_isPermissionFlowRunning)
+                return;
 
-            if (DeviceInfo.Platform == DevicePlatform.Android)
+            _isPermissionFlowRunning = true;
+            try
             {
-                if (DeviceInfo.Version.Major >= 13)
+                PermissionStatus status = PermissionStatus.Granted;
+
+                if (DeviceInfo.Platform == DevicePlatform.Android)
                 {
-                    status = await Permissions.CheckStatusAsync<Permissions.Media>();
-                    if (status != PermissionStatus.Granted)
-                    {
-                        status = await Permissions.RequestAsync<Permissions.Media>();
-                    }
+                    status = await Permissions.CheckStatusAsync<AudioLibraryPermission>();
+                    if (status != PermissionStatus.Granted && requestIfNeeded)
+                        status = await Permissions.RequestAsync<AudioLibraryPermission>();
                 }
-                else
+
+                var granted = status == PermissionStatus.Granted || DeviceInfo.Platform != DevicePlatform.Android;
+                var wasPreviouslyGranted = _hasMediaPermission;
+                _hasMediaPermission = granted;
+
+                if (granted)
                 {
-                    status = await Permissions.CheckStatusAsync<Permissions.StorageRead>();
-                    if (status != PermissionStatus.Granted)
-                    {
-                        status = await Permissions.RequestAsync<Permissions.StorageRead>();
-                    }
+                    var hadInitialized = ViewModel.HasInitialized;
+                    ViewModel.SyncPlaybackSnapshot();
+                    await ViewModel.InitializeAsync();
+
+                    if (hadInitialized && (!wasPreviouslyGranted || ViewModel.TotalSongs == 0))
+                        await ViewModel.LoadSongsAsync();
+
+                    return;
+                }
+
+                if (status == PermissionStatus.Denied && openSettingsWhenDenied)
+                {
+                    var openSettings = await DisplayAlert(
+                        "Permiso de audio",
+                        "Spomusic necesita permiso para leer tu música y mostrar la biblioteca. Actívalo para cargar tus canciones.",
+                        "Abrir configuración",
+                        "Ahora no");
+
+                    if (openSettings)
+                        AppInfo.ShowSettingsUI();
                 }
             }
-
-            if (status == PermissionStatus.Granted || DeviceInfo.Platform != DevicePlatform.Android)
+            finally
             {
-                await ViewModel.InitializeAsync();
-            }
-            else if (status == PermissionStatus.Denied)
-            {
-                await DisplayAlert("Permiso Denegado", "Para mostrar tu música, Spomusic necesita acceso a tus archivos de audio. Por favor, concédelo en la configuración de la aplicación.", "OK");
+                _isPermissionFlowRunning = false;
             }
         }
+
+        private async Task CheckForUpdatesAsync()
+        {
+            try
+            {
+                var update = await _appUpdateService.CheckForUpdateAsync();
+                if (update == null)
+                    return;
+
+                var install = await DisplayAlert(
+                    "Hay nueva versión",
+                    $"Spomusic {update.VersionLabel} está disponible. ¿Quieres descargarla e instalarla ahora?",
+                    "Actualizar",
+                    "Después");
+
+                if (!install)
+                    return;
+
+                var startedInstall = await _appUpdateService.InstallUpdateAsync(update);
+                if (!startedInstall)
+                {
+                    await DisplayAlert(
+                        "Actualización",
+                        string.IsNullOrWhiteSpace(update.ApkDownloadUrl)
+                            ? "Se encontró un release nuevo, pero no hay un APK adjunto para instalar automáticamente. Se abrirá la página del release."
+                            : "Activa el permiso para instalar aplicaciones desde esta app y vuelve a intentar la actualización.",
+                        "OK");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Update check failed: {ex}");
+            }
+        }
+
+#if ANDROID
+        private void OnAndroidActivityResumed()
+        {
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                ViewModel.SyncPlaybackSnapshot();
+                await EnsureAudioPermissionAsync(requestIfNeeded: false, openSettingsWhenDenied: false);
+            });
+        }
+#endif
 
         private async void OnCreatePlaylistClicked(object sender, EventArgs e)
         {

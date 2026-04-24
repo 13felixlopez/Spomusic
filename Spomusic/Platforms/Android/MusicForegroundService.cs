@@ -90,7 +90,9 @@ namespace Spomusic.Platforms.Android
             var builder = new NotificationCompat.Builder(this, ChannelId)
                 .SetContentTitle(title)
                 .SetContentText(artist)
-                .SetSmallIcon(global::Android.Resource.Drawable.IcMediaPlay)
+                .SetSmallIcon(isPlaying
+                    ? global::Android.Resource.Drawable.IcMediaPause
+                    : global::Android.Resource.Drawable.IcMediaPlay)
                 .SetContentIntent(pendingMainIntent)
                 .SetOngoing(isPlaying)
                 .SetOnlyAlertOnce(true)

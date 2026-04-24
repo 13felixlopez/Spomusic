@@ -922,12 +922,20 @@
                                                 Text="{Binding LyricSyncQuality, StringFormat='{}SYNC {0}'}"
                                                 TextColor="{Binding LyricSyncQualityColor}" />
                                         </Border>
-                                        <Border Grid.Column="3" Padding="6,2" BackgroundColor="#12000000" Stroke="Transparent">
+                                        <Border
+                                            Grid.Column="3"
+                                            Padding="6,2"
+                                            BackgroundColor="#12000000"
+                                            Stroke="Transparent">
                                             <Border.StrokeShape>
                                                 <RoundRectangle CornerRadius="8" />
                                             </Border.StrokeShape>
-                                        <HorizontalStackLayout Spacing="6">
-                                                <Label FontSize="10" Text="{Binding CurrentLyricOffsetMs, StringFormat='{}{0}ms'}" TextColor="#D7E7DC" VerticalOptions="Center" />
+                                            <HorizontalStackLayout Spacing="6">
+                                                <Label
+                                                    FontSize="10"
+                                                    Text="{Binding CurrentLyricOffsetMs, StringFormat='{}{0}ms'}"
+                                                    TextColor="#D7E7DC"
+                                                    VerticalOptions="Center" />
                                             </HorizontalStackLayout>
                                         </Border>
                                         <Border
@@ -1560,7 +1568,7 @@
                     Text="LETRAS"
                     TextColor="#E8FFF1"
                     VerticalOptions="Center" />
-                    <HorizontalStackLayout Grid.Column="1" Spacing="8">
+                <HorizontalStackLayout Grid.Column="1" Spacing="8">
                     <Border
                         Padding="8"
                         BackgroundColor="#30000000"
@@ -1590,7 +1598,12 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnSyncMenuClicked" />
                         </Border.GestureRecognizers>
-                        <Label Text="⋮" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" TextColor="White" />
+                        <Label
+                            FontSize="22"
+                            HorizontalOptions="Center"
+                            Text="⋮"
+                            TextColor="White"
+                            VerticalOptions="Center" />
                     </Border>
                     <Border
                         Padding="12"

@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -20,6 +22,7 @@ namespace Spomusic.Services
     {
         private readonly DatabaseService _db;
         private readonly MusicScannerService _scanner;
+        private readonly ILyricAlignmentEngine _lyricAlignmentEngine;
 
 #if ANDROID
         private MediaPlayer? _mediaPlayer;
@@ -43,6 +46,7 @@ namespace Spomusic.Services
         private bool _isNoisyReceiverRegistered;
         private System.Timers.Timer? _sleepTimer;
         private DateTimeOffset? _sleepTimerEndsAtUtc;
+        private CancellationTokenSource? _lyricAlignmentCts;
 
         public bool IsPlaying => _mediaPlayer?.IsPlaying ?? false;
         public SongItem? CurrentSong => _currentPlaylistIndex >= 0 && _currentPlaylistIndex < _playlist.Count ? (_isShuffle ? _playlist[_shuffledIndices[_currentPlaylistIndex]] : _playlist[_currentPlaylistIndex]) : null;
@@ -86,7 +90,7 @@ namespace Spomusic.Services
         {
             if (CurrentSong == null) return;
             _currentSongTimingOffsetMs = offsetMs;
-            await _db.SetLyricTimingOffsetAsync(BuildSongKey(CurrentSong), offsetMs);
+            await _db.SetManualLyricTimingOffsetAsync(BuildLyricTimingKey(CurrentSong), offsetMs);
         }
 
         public TimeSpan CurrentPosition => TimeSpan.FromMilliseconds(_mediaPlayer?.CurrentPosition ?? 0);
@@ -105,10 +109,11 @@ namespace Spomusic.Services
         public event Action<IReadOnlyList<SongItem>>? OnQueueChanged;
         public event Action<TimeSpan?>? OnSleepTimerChanged;
 
-        public AndroidMusicService(DatabaseService db, MusicScannerService scanner)
+        public AndroidMusicService(DatabaseService db, MusicScannerService scanner, ILyricAlignmentEngine lyricAlignmentEngine)
         {
             _db = db;
             _scanner = scanner;
+            _lyricAlignmentEngine = lyricAlignmentEngine;
 
             _timer = new System.Timers.Timer(220);
             _timer.Elapsed += (s, e) =>
@@ -227,6 +232,7 @@ namespace Spomusic.Services
             await _playLock.WaitAsync();
             try
             {
+                ResetLyricAlignmentWork();
                 if (!RequestAudioFocus())
                     return;
 
@@ -242,7 +248,7 @@ namespace Spomusic.Services
                     song.AlbumArt = await _scanner.GetAlbumArtCachedAsync(song.Path);
 
                 song.AccentColorHex = await _scanner.GetDominantColorCachedAsync(song.Path, song.AlbumArt);
-                _currentSongTimingOffsetMs = await _db.GetLyricTimingOffsetAsync(BuildSongKey(song));
+                _currentSongTimingOffsetMs = await _db.GetLyricTimingOffsetAsync(BuildLyricTimingKey(song));
                 _timingTapOffsets.Clear();
 
                 CurrentLyricLine = "Buscando letra...";
@@ -389,6 +395,7 @@ namespace Spomusic.Services
         public void Stop()
         {
             var positionBeforeStop = CurrentPosition;
+            ResetLyricAlignmentWork();
             _manualPauseRequested = false;
             _resumeAfterTransientAudioFocusLoss = false;
             _mediaPlayer?.Stop();
@@ -588,81 +595,12 @@ namespace Spomusic.Services
 
             var avg = (int)Math.Round(_timingTapOffsets.Average());
             _currentSongTimingOffsetMs = avg;
-            await _db.SetLyricTimingOffsetAsync(BuildSongKey(CurrentSong), avg);
+            await _db.SetManualLyricTimingOffsetAsync(BuildLyricTimingKey(CurrentSong), avg);
         }
 
-        // Intenta sincronizar automáticamente la letra usando observaciones reales de cuándo
-        // cambian las líneas (CurrentLyricIndex) durante la reproducción. Esta estrategia
-        // registra tiempos de reproducción observados asociados a marcas de tiempo LRC y
-        // calcula un offset robusto (con rechazo de outliers) para persistirlo.
         public async Task AutoSyncLyricsAsync()
         {
-            if (CurrentSong == null || CurrentLyrics.Count < 3)
-                return;
-
-            // Índice inicial seguro
-            var nowPosMs = CurrentPosition.TotalMilliseconds;
-            int startIndex = CurrentLyricIndex >= 0
-                ? CurrentLyricIndex
-                : CurrentLyrics.FindLastIndex(l => l.Time <= TimeSpan.FromMilliseconds(nowPosMs + LyricLeadMs + _currentSongTimingOffsetMs));
-            if (startIndex < 0) startIndex = 0;
-
-            const int maxObservations = 6;
-            const int perLineTimeoutMs = 3000; // no esperar indefinidamente por una línea
-            const int pollIntervalMs = 120;
-
-            var observations = new List<(double observedPlaybackMs, double lyricTimeMs)>();
-
-            // Recolectar observaciones: preferimos grabar el momento real en que cada línea
-            // se activa (cuando CurrentLyricIndex alcanza el índice objetivo). Si ya pasamos
-            // esa línea, la registramos inmediatamente.
-            int targets = Math.Min(maxObservations, CurrentLyrics.Count - startIndex);
-            for (int t = 0; t < targets; t++)
-            {
-                int targetIndex = startIndex + t;
-                // Si ya hemos pasado la línea, registrar la observación actual
-                if (CurrentLyricIndex >= targetIndex)
-                {
-                    observations.Add((CurrentPosition.TotalMilliseconds, CurrentLyrics[targetIndex].Time.TotalMilliseconds));
-                    continue;
-                }
-
-                // Esperar hasta que la línea se active o hasta timeout
-                var waitStart = DateTime.UtcNow;
-                while ((DateTime.UtcNow - waitStart).TotalMilliseconds < perLineTimeoutMs)
-                {
-                    await Task.Delay(pollIntervalMs);
-                    // Si la canción cambió o se detuvo, abortar
-                    if (CurrentSong == null) break;
-                    if (CurrentLyricIndex >= targetIndex)
-                    {
-                        observations.Add((CurrentPosition.TotalMilliseconds, CurrentLyrics[targetIndex].Time.TotalMilliseconds));
-                        break;
-                    }
-                }
-            }
-
-            if (observations.Count == 0)
-                return;
-
-            // Calcular offsets observados
-            var offsets = observations.Select(o => (int)Math.Round(o.observedPlaybackMs - o.lyricTimeMs)).ToList();
-
-            // Rechazo de outliers usando mediana y MAD (Median Absolute Deviation)
-            offsets.Sort();
-            int median = offsets[offsets.Count / 2];
-            var deviations = offsets.Select(x => Math.Abs(x - median)).OrderBy(x => x).ToList();
-            double mad = deviations[deviations.Count / 2];
-            double threshold = Math.Max(800, 2.5 * mad); // tolerancia mínima ~800ms
-            var filtered = offsets.Where(x => Math.Abs(x - median) <= threshold).ToList();
-            if (filtered.Count == 0) filtered = offsets; // fallback si todo fue considerado outlier
-
-            // Promediamos los offsets filtrados para obtener el offset final
-            int finalOffset = (int)Math.Round(filtered.Average());
-            finalOffset = Math.Clamp(finalOffset, -5000, 5000);
-
-            _currentSongTimingOffsetMs = finalOffset;
-            await _db.SetLyricTimingOffsetAsync(BuildSongKey(CurrentSong), finalOffset);
+            await Task.CompletedTask;
         }
 
         private async Task ProcessLyricRetryQueueAsync()
@@ -786,6 +724,8 @@ namespace Spomusic.Services
                 return;
 
             ParseLyrics(lyricsText);
+            _ = ApplyVerifiedAlignmentIfAvailableAsync(song, requestVersion);
+            _ = AnalyzeAndPersistAlignmentAsync(song, requestVersion);
             OnPositionChanged?.Invoke(CurrentPosition);
         }
 
@@ -828,6 +768,8 @@ namespace Spomusic.Services
                 {
                     Index = idx++,
                     Time = TimeSpan.FromMinutes(min) + TimeSpan.FromSeconds(sec),
+                    OriginalTime = TimeSpan.FromMinutes(min) + TimeSpan.FromSeconds(sec),
+                    HasExplicitTiming = true,
                     Text = match.Groups[3].Value.Trim()
                 });
             }
@@ -843,6 +785,8 @@ namespace Spomusic.Services
                     {
                         Index = idx++,
                         Time = TimeSpan.FromSeconds(offset),
+                        OriginalTime = TimeSpan.FromSeconds(offset),
+                        HasExplicitTiming = false,
                         Text = clean
                     });
                     offset += 2.9;
@@ -863,6 +807,130 @@ namespace Spomusic.Services
             CurrentLyricLine = CurrentLyrics[0].Text;
             OnLyricIndexChanged?.Invoke(0);
             OnLyricProgressChanged?.Invoke(CurrentLyricWordProgress);
+        }
+
+        private async Task ApplyVerifiedAlignmentIfAvailableAsync(SongItem song, long requestVersion)
+        {
+            if (!ShouldApplyLyricsResult(song, requestVersion))
+                return;
+
+            if (CurrentLyrics.Count == 0)
+                return;
+
+            var lyricHash = ComputeLyricHash(CurrentLyrics);
+            var alignment = await _db.GetVerifiedLyricAlignmentAsync(BuildLyricTimingKey(song), lyricHash);
+            if (alignment?.HasUsableAlignment != true)
+                return;
+
+            if (alignment.ConfidenceScore < 0.85d)
+                return;
+
+            ApplyAlignedTimes(CurrentLyrics, alignment.LineTimingsMs);
+
+            if (!ShouldApplyLyricsResult(song, requestVersion))
+                return;
+
+            CurrentLyrics = CurrentLyrics.OrderBy(l => l.Time).ToList();
+            OnPositionChanged?.Invoke(CurrentPosition);
+        }
+
+        private async Task AnalyzeAndPersistAlignmentAsync(SongItem song, long requestVersion)
+        {
+            if (!ShouldApplyLyricsResult(song, requestVersion))
+                return;
+
+            if (CurrentLyrics.Count < 4 || CurrentLyrics.Any(l => !l.HasExplicitTiming))
+                return;
+
+            var songKey = BuildLyricTimingKey(song);
+            var lyricHash = ComputeLyricHash(CurrentLyrics);
+            var existing = await _db.GetVerifiedLyricAlignmentAsync(songKey, lyricHash);
+            if (existing?.HasUsableAlignment == true && existing.ConfidenceScore >= 0.85d)
+                return;
+
+            var timingState = await _db.GetLyricTimingStateAsync(songKey);
+            if (timingState.HasManualOverride)
+                return;
+
+            ResetLyricAlignmentWork();
+            _lyricAlignmentCts = new CancellationTokenSource();
+            var token = _lyricAlignmentCts.Token;
+
+            var snapshot = CurrentLyrics
+                .OrderBy(l => l.Index)
+                .Select(l => new LyricLine
+                {
+                    Index = l.Index,
+                    Time = l.Time,
+                    OriginalTime = l.OriginalTime,
+                    HasExplicitTiming = l.HasExplicitTiming,
+                    Text = l.Text
+                })
+                .ToList();
+
+            try
+            {
+                var result = await _lyricAlignmentEngine.TryAlignAsync(song, snapshot, token);
+                if (!result.HasUsableAlignment || result.ConfidenceScore < 0.82d)
+                    return;
+
+                await _db.SaveVerifiedLyricAlignmentAsync(songKey, lyricHash, "Aligned", result.ConfidenceScore, result.LineTimingsMs);
+
+                if (!ShouldApplyLyricsResult(song, requestVersion) || token.IsCancellationRequested)
+                    return;
+
+                if (CurrentPosition <= TimeSpan.FromSeconds(4))
+                {
+                    ApplyAlignedTimes(CurrentLyrics, result.LineTimingsMs);
+                    CurrentLyrics = CurrentLyrics.OrderBy(l => l.Time).ToList();
+                    OnPositionChanged?.Invoke(CurrentPosition);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+                // Silent by design. Playback must keep running even if alignment fails.
+            }
+        }
+
+        private static void ApplyAlignedTimes(List<LyricLine> lines, IReadOnlyList<long> alignedMs)
+        {
+            if (lines.Count == 0 || alignedMs.Count != lines.Count)
+                return;
+
+            long last = -1;
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var candidate = Math.Max(alignedMs[i], last + 1);
+                lines[i].Time = TimeSpan.FromMilliseconds(candidate);
+                last = candidate;
+            }
+        }
+
+        private static string ComputeLyricHash(IEnumerable<LyricLine> lines)
+        {
+            var payload = string.Join('\n', lines
+                .OrderBy(l => l.Index)
+                .Select(l => $"{l.Index}|{(long)l.OriginalTime.TotalMilliseconds}|{l.HasExplicitTiming}|{l.Text.Trim()}"));
+
+            var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(payload));
+            return Convert.ToHexString(bytes);
+        }
+
+        private void ResetLyricAlignmentWork()
+        {
+            try
+            {
+                _lyricAlignmentCts?.Cancel();
+            }
+            catch
+            {
+            }
+
+            _lyricAlignmentCts?.Dispose();
+            _lyricAlignmentCts = null;
         }
 
         private void UpdateCurrentLyric(TimeSpan pos)
@@ -1091,6 +1159,14 @@ namespace Spomusic.Services
         }
 
         private static string BuildSongKey(SongItem song) => $"{song.Title}_{song.Artist}";
+
+        private static string BuildLyricTimingKey(SongItem song)
+        {
+            if (!string.IsNullOrWhiteSpace(song.Path))
+                return song.Path.Replace('\\', '/').Trim().ToLowerInvariant();
+
+            return $"{song.Title}_{song.Artist}".Trim().ToLowerInvariant();
+        }
 #else
         public bool IsPlaying => false;
         public SongItem? CurrentSong => null;
@@ -1111,7 +1187,7 @@ namespace Spomusic.Services
         public event Action<int>? OnLyricIndexChanged;
         public event Action<double>? OnLyricProgressChanged;
         public event Action<TimeSpan?>? OnSleepTimerChanged;
-        public AndroidMusicService(DatabaseService db, MusicScannerService sc) { _db = db; _scanner = sc; }
+        public AndroidMusicService(DatabaseService db, MusicScannerService sc, ILyricAlignmentEngine lyricAlignmentEngine) { _db = db; _scanner = sc; _lyricAlignmentEngine = lyricAlignmentEngine; }
         public void Play(SongItem song) { }
         public void Pause() { }
         public void Resume() { }

@@ -12,6 +12,8 @@ namespace Spomusic
     [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, LaunchMode = LaunchMode.SingleTop, ScreenOrientation = ScreenOrientation.Portrait, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
     public class MainActivity : MauiAppCompatActivity
     {
+        public static event Action? ActivityResumed;
+
         protected override void OnCreate(Bundle? savedInstanceState)
         {
             base.OnCreate(savedInstanceState);
@@ -32,6 +34,12 @@ namespace Spomusic
                 SystemUiFlags.LayoutStable |
                 SystemUiFlags.LayoutFullscreen);
 #pragma warning restore CA1416
+        }
+
+        protected override void OnResume()
+        {
+            base.OnResume();
+            ActivityResumed?.Invoke();
         }
     }
 }
