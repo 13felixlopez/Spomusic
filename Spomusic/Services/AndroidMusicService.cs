@@ -489,6 +489,28 @@ namespace Spomusic.Services
                 }
             }
 
+            // Fallback: probar otra API pública (lyrics.ovh) por si lrclib no tiene
+            foreach (var (t, a) in attempts.Distinct())
+            {
+                try
+                {
+                    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
+                    var url = $"https://api.lyrics.ovh/v1/{Uri.EscapeDataString(a)}/{Uri.EscapeDataString(t)}";
+                    var resp = await client.GetStringAsync(url);
+                    using var doc = JsonDocument.Parse(resp);
+                    if (doc.RootElement.TryGetProperty("lyrics", out var l))
+                    {
+                        var lyrics = l.GetString();
+                        if (!string.IsNullOrWhiteSpace(lyrics))
+                            return (lyrics, null);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex.Message;
+                }
+            }
+
             return (null, lastError ?? "No result");
         }
 
