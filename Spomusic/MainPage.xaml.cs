@@ -114,6 +114,58 @@ namespace Spomusic
             await CheckAndRequestPermissions();
         }
 
+        // Manejo del botón "Atrás" (hardware / navigation back).
+        // Este override intercepta la tecla atrás y cierra overlays/paneles
+        // (reproductor completo, letras en fullscreen, paneles laterales) en
+        // lugar de permitir que la aplicación se cierre inmediatamente.
+        // Devuelve true cuando el evento es consumido.
+        protected override bool OnBackButtonPressed()
+        {
+            // 1) Si el reproductor a pantalla completa está abierto, ciérralo primero.
+            // CloseFullPlayerAsync es async, por eso lo invocamos en el hilo principal
+            // sin bloquear este método síncrono.
+            if (FullPlayerOverlay.IsVisible)
+            {
+                MainThread.BeginInvokeOnMainThread(async () => await CloseFullPlayerAsync());
+                return true; // Evento consumido: no se cierra la app.
+            }
+
+            // 2) Letras en fullscreen: cerrarlas y consumir el evento.
+            if (ViewModel.IsLyricsFullScreen)
+            {
+                ViewModel.IsLyricsFullScreen = false;
+                return true;
+            }
+
+            // 3) Paneles laterales u overlays (orden según jerarquía visual).
+            if (ViewModel.IsQueuePanelOpen)
+            {
+                ViewModel.IsQueuePanelOpen = false;
+                return true;
+            }
+
+            if (ViewModel.IsPlaylistPanelOpen)
+            {
+                ViewModel.IsPlaylistPanelOpen = false;
+                return true;
+            }
+
+            if (ViewModel.IsFolderPanelOpen)
+            {
+                ViewModel.IsFolderPanelOpen = false;
+                return true;
+            }
+
+            if (ViewModel.IsDiscoverPanelOpen)
+            {
+                ViewModel.IsDiscoverPanelOpen = false;
+                return true;
+            }
+
+            // 4) Ningún overlay/panel abierto: delegar al comportamiento por defecto.
+            return base.OnBackButtonPressed();
+        }
+
         private void OnPageSizeChanged(object? sender, EventArgs e)
         {
             ApplyResponsiveLayout(Width);
