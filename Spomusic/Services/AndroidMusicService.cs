@@ -1101,6 +1101,7 @@ namespace Spomusic.Services
         public int CurrentLyricIndex => -1;
         public double CurrentLyricWordProgress => 0;
         public int LyricLeadMs { get; set; } = 650;
+        public int CurrentLyricOffsetMs => 0;
         public TimeSpan CurrentPosition => TimeSpan.Zero;
         public TimeSpan Duration => TimeSpan.Zero;
         public TimeSpan? SleepTimerRemaining => null;
@@ -1128,6 +1129,8 @@ namespace Spomusic.Services
         public Task DeleteDownloadedLyricsAsync(SongItem song) => Task.CompletedTask;
         public Task DownloadLyricsBatchAsync(IEnumerable<SongItem> songs) => Task.CompletedTask;
         public Task RegisterTimingTapAsync() => Task.CompletedTask;
+        public Task AutoSyncLyricsAsync() => Task.CompletedTask;
+        public Task SetLyricOffsetAsync(int offsetMs) => Task.CompletedTask;
         public void MoveQueueItem(int fromIndex, int toIndex) { }
         public IReadOnlyList<SongItem> GetQueueSnapshot() => Array.Empty<SongItem>();
         public event Action<IReadOnlyList<SongItem>>? OnQueueChanged;
