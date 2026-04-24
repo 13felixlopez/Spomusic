@@ -37,3 +37,17 @@ Spomusic es un reproductor de música local hecho con .NET MAUI enfocado en Andr
 ## Estado del Proyecto
 
 En desarrollo.
+
+## Notas de la funcionalidad de sincronización de letras
+
+- Nuevo modo de registro por taps (3 taps): desde el reproductor de letras en pantalla completa abre el menú de sincronización (ícono ⋮) y selecciona "Modo registro (3 taps)". El flujo:
+  1. Al iniciar el modo se espera que toques la pantalla 3 veces justo cuando la línea empiece. Cada tap se registra como una muestra.
+  2. La vista muestra un mensaje provisional con el número de taps recogidos y el offset provisional en ms.
+  3. Tras recolectar las 3 muestras se calcula el promedio y se aplica automáticamente como nuevo offset de la canción.
+  4. Puedes cancelar el registro con "Cancelar registro" en el mismo menú.
+
+- Comportamiento de un solo tap: si no estás en modo registro, el tap registra una única muestra y muestra un mensaje breve en la UI en lugar de un modal.
+
+- Auto-sync: el sistema sigue ofreciendo "Auto-sync ahora" al menú, que ejecuta el método automático de sincronización y muestra el resultado en la barra de estado.
+
+Estas mejoras buscan ofrecer una forma guiada para ajustar la sincronía de forma confiable sin interrumpir la reproducción.
