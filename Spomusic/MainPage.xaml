@@ -1718,6 +1718,30 @@
                             HeightRequest="14"
                             WidthRequest="14" />
                     </Border>
+                    <Border
+                        Grid.Row="0"
+                        Grid.RowSpan="2"
+                        Grid.Column="7"
+                        Margin="6,0,0,0"
+                        Padding="10"
+                        BackgroundColor="#28000000"
+                        HeightRequest="34"
+                        Stroke="Transparent"
+                        WidthRequest="42">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="8" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <!-- Enlaza al comando que descarga la letra para uso offline -->
+                            <TapGestureRecognizer Command="{Binding DownloadLyricsCommand}" />
+                        </Border.GestureRecognizers>
+                        <Path
+                            Aspect="Uniform"
+                            Data="{StaticResource DownloadIcon}"
+                            Fill="White"
+                            HeightRequest="14"
+                            WidthRequest="14" />
+                    </Border>
                 </Grid>
             </Border>
         </Grid>
