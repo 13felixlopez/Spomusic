@@ -434,24 +434,62 @@ namespace Spomusic.Services
                 SetLyricsStatus(song, requestVersion, "Offline - reintentando letra en segundo plano.");
         }
 
+        // Intentos robustos para consultar la API de letras. Algunos títulos o artistas
+        // incluyen información adicional (feat., (remaster), etc.) que confunde la búsqueda;
+        // probamos versiones normalizadas en orden hasta obtener resultado.
         private async Task<(string? Lyrics, string? Error)> TryFetchLyricsFromApiAsync(string title, string artist)
         {
-            try
+            string NormalizeForApi(string input)
             {
-                using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-                var url = $"https://lrclib.net/api/get?artist_name={Uri.EscapeDataString(artist)}&track_name={Uri.EscapeDataString(title)}";
-                var response = await client.GetStringAsync(url);
-                using var doc = JsonDocument.Parse(response);
-                var root = doc.RootElement;
+                if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+                // Quitar contenido entre paréntesis y corchetes, y etiquetas de featuring comunes.
+                var withoutParens = Regex.Replace(input, "\\s*\\(.*?\\)|\\s*\\[.*?\\]", string.Empty).Trim();
+                // Eliminar sufijos comunes de featuring
+                withoutParens = Regex.Replace(withoutParens, "(feat\\.|ft\\.|featuring)\\s+.*", string.Empty, RegexOptions.IgnoreCase).Trim();
+                // Recortar en guiones o barras que suelen separar versiones
+                var parts = withoutParens.Split(new[] { '-', '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                return parts.Length > 0 ? parts[0].Trim() : withoutParens;
+            }
 
-                var synced = root.TryGetProperty("syncedLyrics", out var s) ? s.GetString() : null;
-                var plain = root.TryGetProperty("plainLyrics", out var p) ? p.GetString() : null;
-                return (!string.IsNullOrWhiteSpace(synced) ? synced : plain, null);
-            }
-            catch (Exception ex)
+            var attempts = new List<(string title, string artist)>
             {
-                return (null, ex.Message);
+                (title, artist),
+                (NormalizeForApi(title), NormalizeForApi(artist)),
+            };
+
+            // Si el artista tiene comma (ej. "Artist, The"), probar solo la primera parte
+            if (artist?.Contains(',') == true)
+            {
+                var firstArtist = artist.Split(',', StringSplitOptions.RemoveEmptyEntries)[0].Trim();
+                attempts.Add((title, firstArtist));
+                attempts.Add((NormalizeForApi(title), firstArtist));
             }
+
+            string? lastError = null;
+            foreach (var (t, a) in attempts.Distinct())
+            {
+                try
+                {
+                    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+                    var url = $"https://lrclib.net/api/get?artist_name={Uri.EscapeDataString(a)}&track_name={Uri.EscapeDataString(t)}";
+                    var response = await client.GetStringAsync(url);
+                    using var doc = JsonDocument.Parse(response);
+                    var root = doc.RootElement;
+
+                    var synced = root.TryGetProperty("syncedLyrics", out var s) ? s.GetString() : null;
+                    var plain = root.TryGetProperty("plainLyrics", out var p) ? p.GetString() : null;
+                    var result = !string.IsNullOrWhiteSpace(synced) ? synced : plain;
+                    if (!string.IsNullOrWhiteSpace(result))
+                        return (result, null);
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex.Message;
+                    // Intentar la siguiente variante
+                }
+            }
+
+            return (null, lastError ?? "No result");
         }
 
         public async Task SaveLyricsOfflineAsync(SongItem song)
