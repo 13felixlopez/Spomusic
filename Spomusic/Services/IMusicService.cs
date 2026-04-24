@@ -38,6 +38,7 @@ namespace Spomusic.Services
         int CurrentLyricIndex { get; }
         double CurrentLyricWordProgress { get; }
         int LyricLeadMs { get; set; }
+        int CurrentLyricOffsetMs { get; }
         
         void SetPlaylist(List<SongItem> songs);
         Task ShareCurrentSong();
@@ -46,6 +47,8 @@ namespace Spomusic.Services
         Task DeleteDownloadedLyricsAsync(SongItem song);
         Task DownloadLyricsBatchAsync(IEnumerable<SongItem> songs);
         Task RegisterTimingTapAsync();
+        Task AutoSyncLyricsAsync();
+        Task SetLyricOffsetAsync(int offsetMs);
         void MoveQueueItem(int fromIndex, int toIndex);
         IReadOnlyList<SongItem> GetQueueSnapshot();
 

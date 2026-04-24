@@ -902,7 +902,7 @@
                                     <TapGestureRecognizer Command="{Binding ToggleLyricsFullScreenCommand}" />
                                 </Border.GestureRecognizers>
                                 <Grid RowDefinitions="Auto,*" RowSpacing="8">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+                                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
                                         <Label
                                             FontAttributes="Bold"
                                             FontSize="11"
@@ -922,34 +922,42 @@
                                                 Text="{Binding LyricSyncQuality, StringFormat='{}SYNC {0}'}"
                                                 TextColor="{Binding LyricSyncQualityColor}" />
                                         </Border>
-                <Border
-                    Grid.Column="2"
-                    Padding="8"
-                    BackgroundColor="#16000000"
-                    Stroke="Transparent"
-                    HeightRequest="34"
-                    WidthRequest="34">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="9" />
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding DownloadLyricsCommand}" />
-                    </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource DownloadIcon}"
-                        Fill="White"
-                        HeightRequest="14"
-                        WidthRequest="14" />
-                </Border>
-                <Path
-                    Grid.Column="4"
-                    Aspect="Uniform"
-                    Data="{StaticResource ChevronDownIcon}"
-                    Fill="White"
-                    HeightRequest="14"
-                    Rotation="270"
-                    WidthRequest="14" />
+                                        <Border Grid.Column="3" Padding="6,2" BackgroundColor="#12000000" Stroke="Transparent">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="8" />
+                                            </Border.StrokeShape>
+                                        <HorizontalStackLayout Spacing="6">
+                                                <Label FontSize="10" Text="{Binding CurrentLyricOffsetMs, StringFormat='{}{0}ms'}" TextColor="#D7E7DC" VerticalOptions="Center" />
+                                            </HorizontalStackLayout>
+                                        </Border>
+                                        <Border
+                                            Grid.Column="2"
+                                            Padding="8"
+                                            BackgroundColor="#16000000"
+                                            HeightRequest="34"
+                                            Stroke="Transparent"
+                                            WidthRequest="34">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="9" />
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding DownloadLyricsCommand}" />
+                                            </Border.GestureRecognizers>
+                                            <Path
+                                                Aspect="Uniform"
+                                                Data="{StaticResource DownloadIcon}"
+                                                Fill="White"
+                                                HeightRequest="14"
+                                                WidthRequest="14" />
+                                        </Border>
+                                        <Path
+                                            Grid.Column="4"
+                                            Aspect="Uniform"
+                                            Data="{StaticResource ChevronDownIcon}"
+                                            Fill="White"
+                                            HeightRequest="14"
+                                            Rotation="270"
+                                            WidthRequest="14" />
                                     </Grid>
                                     <ScrollView
                                         Grid.Row="1"
@@ -1552,7 +1560,7 @@
                     Text="LETRAS"
                     TextColor="#E8FFF1"
                     VerticalOptions="Center" />
-                <HorizontalStackLayout Grid.Column="1" Spacing="8">
+                    <HorizontalStackLayout Grid.Column="1" Spacing="8">
                     <Border
                         Padding="8"
                         BackgroundColor="#30000000"
@@ -1569,6 +1577,20 @@
                             Aspect="Uniform"
                             Data="{StaticResource DownloadIcon}"
                             Fill="White" />
+                    </Border>
+                    <Border
+                        Padding="12"
+                        BackgroundColor="#30000000"
+                        HeightRequest="50"
+                        Stroke="Transparent"
+                        WidthRequest="50">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="25" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSyncMenuClicked" />
+                        </Border.GestureRecognizers>
+                        <Label Text="⋮" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" TextColor="White" />
                     </Border>
                     <Border
                         Padding="12"
@@ -1723,14 +1745,14 @@
                         Grid.RowSpan="2"
                         Grid.Column="5"
                         Margin="6,0,0,0"
-                        BackgroundColor="#28000000"
-                        Command="{Binding ReportLyricTimingCommand}"
+                        BackgroundColor="#213629"
+                        Command="{Binding TapSyncCommand}"
                         CornerRadius="8"
-                        FontSize="10"
+                        FontSize="11"
                         HeightRequest="34"
-                        Text="Rpt"
-                        TextColor="White"
-                        WidthRequest="46" />
+                        Text="Sync"
+                        TextColor="#DDFDE8"
+                        WidthRequest="56" />
                     <Border
                         Grid.Row="0"
                         Grid.RowSpan="2"
@@ -1750,30 +1772,6 @@
                         <Path
                             Aspect="Uniform"
                             Data="{StaticResource TrashIcon}"
-                            Fill="White"
-                            HeightRequest="14"
-                            WidthRequest="14" />
-                    </Border>
-                    <Border
-                        Grid.Row="0"
-                        Grid.RowSpan="2"
-                        Grid.Column="7"
-                        Margin="6,0,0,0"
-                        Padding="10"
-                        BackgroundColor="#28000000"
-                        HeightRequest="34"
-                        Stroke="Transparent"
-                        WidthRequest="42">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="8" />
-                        </Border.StrokeShape>
-                        <Border.GestureRecognizers>
-                            <!--  Enlaza al comando que descarga la letra para uso offline  -->
-                            <TapGestureRecognizer Command="{Binding DownloadLyricsCommand}" />
-                        </Border.GestureRecognizers>
-                        <Path
-                            Aspect="Uniform"
-                            Data="{StaticResource DownloadIcon}"
                             Fill="White"
                             HeightRequest="14"
                             WidthRequest="14" />

@@ -56,6 +56,15 @@ namespace Spomusic.ViewModels
         [ObservableProperty] private SongItem? _draggingQueueSong;
         [ObservableProperty] private string _lyricSyncQuality = "Baja";
         [ObservableProperty] private string _lyricSyncQualityColor = "#FF8A80";
+        [ObservableProperty] private int _currentLyricOffsetMs = 0;
+        [ObservableProperty] private string _syncStatus = string.Empty;
+        private bool _autoSyncAttempted = false;
+        private List<int> _tapSamples = new();
+
+        [ObservableProperty] private bool _isRecordingTaps;
+        [ObservableProperty] private int _tapsRequired = 3;
+        [ObservableProperty] private int _tapsCollected;
+        [ObservableProperty] private int _provisionalOffsetMs;
         [ObservableProperty] private string _sleepTimerStatus = string.Empty;
 
         public bool IsNotFocusMode => !IsFocusMode;
@@ -112,6 +121,10 @@ namespace Spomusic.ViewModels
                 FullLyrics = new ObservableCollection<LyricLine>(_musicService.CurrentLyrics);
                 BuildWordProgressFormattedLyric();
                 UpdateLyricSyncQuality();
+                // Reset auto-sync flag when song changes
+                _autoSyncAttempted = false;
+                // Intentamos auto-sync automáticamente para letras de calidad baja/media
+                _ = TryAutoSyncIfNeededAsync();
                 _ = LoadKaraokePresetForCurrentSongAsync();
                 _ = LoadRecommendationsAsync();
                 _ = LoadContinueListeningAsync();
@@ -126,6 +139,7 @@ namespace Spomusic.ViewModels
                 CurrentLyricWordProgress = _musicService.CurrentLyricWordProgress;
                 BuildWordProgressFormattedLyric();
                 UpdateLyricSyncQuality();
+                CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
 
                 if (FullLyrics.Count == 0 && _musicService.CurrentLyrics.Count > 0)
                     FullLyrics = new ObservableCollection<LyricLine>(_musicService.CurrentLyrics);
@@ -298,8 +312,44 @@ namespace Spomusic.ViewModels
         public async Task ReportLyricTiming()
         {
             if (CurrentSong == null) return;
+            if (IsRecordingTaps)
+            {
+                // Si estamos en modo registro, acumular la muestra y no persistir de inmediato.
+                await _musicService.RegisterTimingTapAsync();
+                // Registrar la muestra localmente (el servicio ya guarda un promedio interno; aquí
+                // mantenemos muestras para dar opción a confirmar/rechazar si el usuario lo desea)
+                _tapSamples.Add(_musicService.CurrentLyricOffsetMs);
+                TapsCollected = _tapSamples.Count;
+                ProvisionalOffsetMs = _tapSamples.Count > 0 ? (int)Math.Round(_tapSamples.Average()) : 0;
+
+                if (TapsCollected >= TapsRequired)
+                {
+                    // Auto-confirmar: aplicar promedio final y persistir
+                    var final = (int)Math.Round(_tapSamples.Average());
+                    await _musicService.SetLyricOffsetAsync(final);
+                    ProvisionalOffsetMs = final;
+                    IsRecordingTaps = false;
+                    _tapSamples.Clear();
+                    TapsCollected = 0;
+                    SyncStatus = $"Offset guardado: {final} ms";
+                    await Task.Delay(1200);
+                    SyncStatus = string.Empty;
+                }
+                else
+                {
+                    SyncStatus = $"Tap registrado ({TapsCollected}/{TapsRequired}) - provisional {ProvisionalOffsetMs} ms";
+                }
+                return;
+            }
+
+            // Comportamiento original: un solo tap persistente inmediato
             await _musicService.RegisterTimingTapAsync();
-            await App.Current!.Windows[0].Page!.DisplayAlert("Timing reportado", "Se guardó un ajuste local de sincronía para esta canción.", "OK");
+            // Mostrar feedback no bloqueante en la UI en lugar de un modal
+            SyncStatus = $"Tap registrado: {_musicService.CurrentLyricOffsetMs} ms";
+            CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+            UpdateLyricSyncQuality();
+            await Task.Delay(900);
+            SyncStatus = string.Empty;
         }
 
         [RelayCommand]
@@ -328,10 +378,130 @@ namespace Spomusic.ViewModels
         public void ToggleTimingSyncMode() => IsTimingSyncMode = !IsTimingSyncMode;
 
         [RelayCommand]
+        public void StartTapRecording()
+        {
+            if (CurrentSong == null) return;
+            _tapSamples.Clear();
+            TapsCollected = 0;
+            ProvisionalOffsetMs = 0;
+            IsRecordingTaps = true;
+            SyncStatus = "Modo registro: toca 3 veces al iniciarse las líneas";
+        }
+
+        [RelayCommand]
+        public async Task CancelTapRecording()
+        {
+            _tapSamples.Clear();
+            TapsCollected = 0;
+            ProvisionalOffsetMs = 0;
+            IsRecordingTaps = false;
+            SyncStatus = "Registro cancelado";
+            await Task.Delay(900);
+            SyncStatus = string.Empty;
+        }
+
+        [RelayCommand]
         public async Task TapSync()
         {
             if (!IsTimingSyncMode) return;
-            await _musicService.RegisterTimingTapAsync();
+            // Intentamos primero sincronización automática y luego registramos un tap como respaldo
+            try
+            {
+                await _musicService.AutoSyncLyricsAsync();
+            }
+            catch
+            {
+                // No bloquear la UX si falla
+            }
+
+            try
+            {
+                await _musicService.RegisterTimingTapAsync();
+            }
+            catch
+            {
+                // Ignorar errores de tap
+            }
+            // Actualizar la vista con el nuevo offset
+            CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+            UpdateLyricSyncQuality();
+        }
+
+        [RelayCommand]
+        public async Task AutoSyncNow()
+        {
+            if (CurrentSong == null) return;
+            SyncStatus = "Auto-sync...";
+            try
+            {
+                await _musicService.AutoSyncLyricsAsync();
+                CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+                SyncStatus = $"Auto-sync aplicado ({CurrentLyricOffsetMs} ms)";
+            }
+            catch
+            {
+                SyncStatus = "Auto-sync fallido";
+            }
+            UpdateLyricSyncQuality();
+            await Task.Delay(1200);
+            SyncStatus = string.Empty;
+        }
+
+        [RelayCommand]
+        public async Task AdjustOffset(int delta)
+        {
+            if (CurrentSong == null) return;
+            var newOffset = CurrentLyricOffsetMs + delta;
+            await _musicService.SetLyricOffsetAsync(newOffset);
+            CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+            SyncStatus = $"Offset: {CurrentLyricOffsetMs} ms";
+            UpdateLyricSyncQuality();
+        }
+
+        [RelayCommand]
+        public async Task ResetOffset()
+        {
+            if (CurrentSong == null) return;
+            await _musicService.SetLyricOffsetAsync(0);
+            CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+            SyncStatus = "Offset reiniciado";
+            UpdateLyricSyncQuality();
+            await Task.Delay(900);
+            SyncStatus = string.Empty;
+        }
+
+        [RelayCommand]
+        public async Task ApplyOffset(int offsetMs)
+        {
+            if (CurrentSong == null) return;
+            await _musicService.SetLyricOffsetAsync(offsetMs);
+            CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+            UpdateLyricSyncQuality();
+            await App.Current!.Windows[0].Page!.DisplayAlert("Offset aplicado", $"Offset guardado: {offsetMs} ms", "OK");
+        }
+
+        private async Task TryAutoSyncIfNeededAsync()
+        {
+            if (CurrentSong == null) return;
+            if (_autoSyncAttempted) return;
+            if (LyricSyncQuality == "Alta") return;
+
+            _autoSyncAttempted = true;
+            SyncStatus = "Intentando sincronización automática...";
+            try
+            {
+                await _musicService.AutoSyncLyricsAsync();
+                CurrentLyricOffsetMs = _musicService.CurrentLyricOffsetMs;
+                SyncStatus = "Sincronización automática aplicada";
+            }
+            catch
+            {
+                SyncStatus = "Sincronización automática fallida";
+            }
+
+            UpdateLyricSyncQuality();
+            await Task.Delay(1200);
+            SyncStatus = string.Empty;
         }
 
         [RelayCommand]

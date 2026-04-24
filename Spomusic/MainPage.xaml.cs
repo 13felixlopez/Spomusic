@@ -1,6 +1,7 @@
 using Spomusic.ViewModels;
 using Spomusic.Models;
 using System.ComponentModel;
+using Microsoft.Maui.Devices;
 
 namespace Spomusic
 {
@@ -37,6 +38,37 @@ namespace Spomusic
             // Mantiene estable el reproductor principal en distintos anchos
             // recalculando las superficies mas grandes desde el viewport real.
             SizeChanged += OnPageSizeChanged;
+        }
+
+        // Mostrar un pequeño menú modal (ActionSheet) con opciones de sincronización manual
+        private async void OnSyncMenuClicked(object sender, EventArgs e)
+        {
+            if (ViewModel.CurrentSong == null) return;
+
+            string[] choices;
+            if (ViewModel.IsRecordingTaps)
+                choices = new[] { "Cancelar registro" };
+            else
+                choices = new[] { "Tap (reportar ahora)", "Auto-sync ahora", "Modo registro (3 taps)" };
+
+            var option = await DisplayActionSheet("Sincronización manual", "Cancelar", null, choices);
+            if (option == "Tap (reportar ahora)")
+            {
+                // Registrar tap manual
+                await ViewModel.ReportLyricTimingCommand.ExecuteAsync(null);
+            }
+            else if (option == "Auto-sync ahora")
+            {
+                await ViewModel.AutoSyncNowCommand.ExecuteAsync(null);
+            }
+            else if (option == "Modo registro (3 taps)")
+            {
+                ViewModel.StartTapRecordingCommand.Execute(null);
+            }
+            else if (option == "Cancelar registro")
+            {
+                ViewModel.CancelTapRecordingCommand.Execute(null);
+            }
         }
 
         private async void OnMiniPlayerTapped(object sender, TappedEventArgs e)
@@ -93,7 +125,8 @@ namespace Spomusic
                 await Task.Delay(ViewModel.IsReducedMotion ? 30 : 90, token);
                 if (token.IsCancellationRequested) return;
 
-                LyricsCollectionView.ScrollTo(index, position: ScrollToPosition.MakeVisible, animate: !ViewModel.IsReducedMotion);
+                // Mantener la línea actual centrada verticalmente en pantalla completa
+                LyricsCollectionView.ScrollTo(index, position: ScrollToPosition.Center, animate: !ViewModel.IsReducedMotion);
                 _lastScrolledLyricIndex = index;
             }
             catch (TaskCanceledException)
@@ -116,25 +149,27 @@ namespace Spomusic
 
         // Manejo del botón "Atrás" (hardware / navigation back).
         // Este override intercepta la tecla atrás y cierra overlays/paneles
-        // (reproductor completo, letras en fullscreen, paneles laterales) en
+        // (letras en fullscreen, reproductor completo, paneles laterales) en
         // lugar de permitir que la aplicación se cierre inmediatamente.
         // Devuelve true cuando el evento es consumido.
         protected override bool OnBackButtonPressed()
         {
-            // 1) Si el reproductor a pantalla completa está abierto, ciérralo primero.
+            // 1) Si las letras están en fullscreen, deben cerrarse primero y
+            // dejar visible el reproductor full que está debajo. Esto respeta
+            // la jerarquía esperada por el usuario: cerrar la capa superior.
+            if (ViewModel.IsLyricsFullScreen)
+            {
+                ViewModel.IsLyricsFullScreen = false;
+                return true;
+            }
+
+            // 2) Si el reproductor a pantalla completa está abierto, ciérralo.
             // CloseFullPlayerAsync es async, por eso lo invocamos en el hilo principal
             // sin bloquear este método síncrono.
             if (FullPlayerOverlay.IsVisible)
             {
                 MainThread.BeginInvokeOnMainThread(async () => await CloseFullPlayerAsync());
                 return true; // Evento consumido: no se cierra la app.
-            }
-
-            // 2) Letras en fullscreen: cerrarlas y consumir el evento.
-            if (ViewModel.IsLyricsFullScreen)
-            {
-                ViewModel.IsLyricsFullScreen = false;
-                return true;
             }
 
             // 3) Paneles laterales u overlays (orden según jerarquía visual).
@@ -514,6 +549,19 @@ namespace Spomusic
         /// </summary>
         private async void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
+            // Mantener la pantalla encendida cuando las letras están en fullscreen
+            if (e.PropertyName == nameof(MainViewModel.IsLyricsFullScreen))
+            {
+                try
+                {
+                    DeviceDisplay.KeepScreenOn = ViewModel.IsLyricsFullScreen;
+                }
+                catch
+                {
+                    // ignorar si la plataforma no lo soporta
+                }
+            }
+
             if (e.PropertyName != nameof(MainViewModel.CurrentSong))
                 return;
 

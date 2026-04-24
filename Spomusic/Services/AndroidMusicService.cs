@@ -80,6 +80,14 @@ namespace Spomusic.Services
             get => _lyricLeadMs;
             set => _lyricLeadMs = Math.Clamp(value, 0, 1200);
         }
+        public int CurrentLyricOffsetMs => _currentSongTimingOffsetMs;
+
+        public async Task SetLyricOffsetAsync(int offsetMs)
+        {
+            if (CurrentSong == null) return;
+            _currentSongTimingOffsetMs = offsetMs;
+            await _db.SetLyricTimingOffsetAsync(BuildSongKey(CurrentSong), offsetMs);
+        }
 
         public TimeSpan CurrentPosition => TimeSpan.FromMilliseconds(_mediaPlayer?.CurrentPosition ?? 0);
         public TimeSpan Duration => TimeSpan.FromMilliseconds(_mediaPlayer?.Duration ?? 0);
@@ -581,6 +589,80 @@ namespace Spomusic.Services
             var avg = (int)Math.Round(_timingTapOffsets.Average());
             _currentSongTimingOffsetMs = avg;
             await _db.SetLyricTimingOffsetAsync(BuildSongKey(CurrentSong), avg);
+        }
+
+        // Intenta sincronizar automáticamente la letra usando observaciones reales de cuándo
+        // cambian las líneas (CurrentLyricIndex) durante la reproducción. Esta estrategia
+        // registra tiempos de reproducción observados asociados a marcas de tiempo LRC y
+        // calcula un offset robusto (con rechazo de outliers) para persistirlo.
+        public async Task AutoSyncLyricsAsync()
+        {
+            if (CurrentSong == null || CurrentLyrics.Count < 3)
+                return;
+
+            // Índice inicial seguro
+            var nowPosMs = CurrentPosition.TotalMilliseconds;
+            int startIndex = CurrentLyricIndex >= 0
+                ? CurrentLyricIndex
+                : CurrentLyrics.FindLastIndex(l => l.Time <= TimeSpan.FromMilliseconds(nowPosMs + LyricLeadMs + _currentSongTimingOffsetMs));
+            if (startIndex < 0) startIndex = 0;
+
+            const int maxObservations = 6;
+            const int perLineTimeoutMs = 3000; // no esperar indefinidamente por una línea
+            const int pollIntervalMs = 120;
+
+            var observations = new List<(double observedPlaybackMs, double lyricTimeMs)>();
+
+            // Recolectar observaciones: preferimos grabar el momento real en que cada línea
+            // se activa (cuando CurrentLyricIndex alcanza el índice objetivo). Si ya pasamos
+            // esa línea, la registramos inmediatamente.
+            int targets = Math.Min(maxObservations, CurrentLyrics.Count - startIndex);
+            for (int t = 0; t < targets; t++)
+            {
+                int targetIndex = startIndex + t;
+                // Si ya hemos pasado la línea, registrar la observación actual
+                if (CurrentLyricIndex >= targetIndex)
+                {
+                    observations.Add((CurrentPosition.TotalMilliseconds, CurrentLyrics[targetIndex].Time.TotalMilliseconds));
+                    continue;
+                }
+
+                // Esperar hasta que la línea se active o hasta timeout
+                var waitStart = DateTime.UtcNow;
+                while ((DateTime.UtcNow - waitStart).TotalMilliseconds < perLineTimeoutMs)
+                {
+                    await Task.Delay(pollIntervalMs);
+                    // Si la canción cambió o se detuvo, abortar
+                    if (CurrentSong == null) break;
+                    if (CurrentLyricIndex >= targetIndex)
+                    {
+                        observations.Add((CurrentPosition.TotalMilliseconds, CurrentLyrics[targetIndex].Time.TotalMilliseconds));
+                        break;
+                    }
+                }
+            }
+
+            if (observations.Count == 0)
+                return;
+
+            // Calcular offsets observados
+            var offsets = observations.Select(o => (int)Math.Round(o.observedPlaybackMs - o.lyricTimeMs)).ToList();
+
+            // Rechazo de outliers usando mediana y MAD (Median Absolute Deviation)
+            offsets.Sort();
+            int median = offsets[offsets.Count / 2];
+            var deviations = offsets.Select(x => Math.Abs(x - median)).OrderBy(x => x).ToList();
+            double mad = deviations[deviations.Count / 2];
+            double threshold = Math.Max(800, 2.5 * mad); // tolerancia mínima ~800ms
+            var filtered = offsets.Where(x => Math.Abs(x - median) <= threshold).ToList();
+            if (filtered.Count == 0) filtered = offsets; // fallback si todo fue considerado outlier
+
+            // Promediamos los offsets filtrados para obtener el offset final
+            int finalOffset = (int)Math.Round(filtered.Average());
+            finalOffset = Math.Clamp(finalOffset, -5000, 5000);
+
+            _currentSongTimingOffsetMs = finalOffset;
+            await _db.SetLyricTimingOffsetAsync(BuildSongKey(CurrentSong), finalOffset);
         }
 
         private async Task ProcessLyricRetryQueueAsync()
