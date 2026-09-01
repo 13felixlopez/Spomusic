@@ -32,7 +32,25 @@ namespace Spomusic.Platforms.Android
             base.OnCreate();
             CreateNotificationChannel();
             _mediaSession = new MediaSessionCompat(this, "Spomusic");
+            
+            var musicService = IPlatformApplication.Current.Services.GetService<IMusicService>();
+            if (musicService != null)
+            {
+                _mediaSession.SetCallback(new MediaSessionCallback(musicService));
+            }
+            
             _mediaSession.Active = true;
+        }
+
+        private class MediaSessionCallback : MediaSessionCompat.Callback
+        {
+            private readonly IMusicService _musicService;
+            public MediaSessionCallback(IMusicService musicService) => _musicService = musicService;
+            public override void OnPlay() => _musicService.Resume();
+            public override void OnPause() => _musicService.Pause();
+            public override void OnSkipToNext() => _musicService.Next();
+            public override void OnSkipToPrevious() => _musicService.Previous();
+            public override void OnStop() => _musicService.Stop();
         }
 
         private void CreateNotificationChannel()

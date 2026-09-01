@@ -397,19 +397,18 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding TogglePlayPauseCommand}" />
                     </Border.GestureRecognizers>
-                    <Path
-                        Aspect="Uniform"
-                        Data="{StaticResource PlayIcon}"
-                        Fill="White">
-                        <Path.Triggers>
-                            <DataTrigger
-                                Binding="{Binding IsPlaying}"
-                                TargetType="Path"
-                                Value="True">
-                                <Setter Property="Data" Value="{StaticResource PauseIcon}" />
-                            </DataTrigger>
-                        </Path.Triggers>
-                    </Path>
+                    <Grid>
+                        <Path
+                            Aspect="Uniform"
+                            Data="{StaticResource PlayIcon}"
+                            Fill="White"
+                            IsVisible="{Binding IsPlaying, Converter={StaticResource InvertedBoolConverter}}" />
+                        <Path
+                            Aspect="Uniform"
+                            Data="{StaticResource PauseIcon}"
+                            Fill="White"
+                            IsVisible="{Binding IsPlaying}" />
+                    </Grid>
                 </Border>
                 <Border
                     Grid.Column="3"
@@ -813,19 +812,18 @@
                                     <Border.GestureRecognizers>
                                         <TapGestureRecognizer Command="{Binding TogglePlayPauseCommand}" />
                                     </Border.GestureRecognizers>
-                                    <Path
-                                        Aspect="Uniform"
-                                        Data="{StaticResource PlayIcon}"
-                                        Fill="Black">
-                                        <Path.Triggers>
-                                            <DataTrigger
-                                                Binding="{Binding IsPlaying}"
-                                                TargetType="Path"
-                                                Value="True">
-                                                <Setter Property="Data" Value="{StaticResource PauseIcon}" />
-                                            </DataTrigger>
-                                        </Path.Triggers>
-                                    </Path>
+                                    <Grid>
+                                        <Path
+                                            Aspect="Uniform"
+                                            Data="{StaticResource PlayIcon}"
+                                            Fill="Black"
+                                            IsVisible="{Binding IsPlaying, Converter={StaticResource InvertedBoolConverter}}" />
+                                        <Path
+                                            Aspect="Uniform"
+                                            Data="{StaticResource PauseIcon}"
+                                            Fill="Black"
+                                            IsVisible="{Binding IsPlaying}" />
+                                    </Grid>
                                 </Border>
                                 <Border
                                     Grid.Column="3"

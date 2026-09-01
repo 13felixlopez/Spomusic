@@ -13,6 +13,7 @@
             </ResourceDictionary.MergedDictionaries>
 
             <converters:ByteArrayToImageSourceConverter x:Key="ByteArrayToImageSourceConverter" />
+            <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
             <converters:FavoriteColorConverter x:Key="FavoriteColorConverter" />
             <converters:IsNotNullConverter x:Key="IsNotNullConverter" />
             <converters:TimeSecondsConverter x:Key="TimeSecondsConverter" />
