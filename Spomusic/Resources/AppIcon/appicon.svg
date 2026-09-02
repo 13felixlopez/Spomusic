@@ -1,16 +1,77 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg">
+<svg width="512" height="512" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1A1A1A"/>
-      <stop offset="100%" stop-color="#050505"/>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F171A"/>
+      <stop offset="50%" stop-color="#080C0E"/>
+      <stop offset="100%" stop-color="#040607"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#28E06A"/>
-      <stop offset="100%" stop-color="#148F40"/>
+
+    <!-- Sonic Ribbon Gradient: Cyan -> Neon Emerald -> Violet -->
+    <linearGradient id="sonicGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A855F7"/>
+      <stop offset="35%" stop-color="#00D2FF"/>
+      <stop offset="75%" stop-color="#00F59B"/>
+      <stop offset="100%" stop-color="#10B981"/>
     </linearGradient>
+
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D2FF" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#00F59B" stop-opacity="0.1"/>
+    </linearGradient>
+
+    <filter id="neonGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="14" result="blur1"/>
+      <feGaussianBlur stdDeviation="6" result="blur2"/>
+      <feMerge>
+        <feMergeNode in="blur1"/>
+        <feMergeNode in="blur2"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
   </defs>
-  <rect width="456" height="456" fill="url(#bg)" rx="98"/>
-  <rect x="24" y="24" width="408" height="408" fill="none" stroke="#2D2D2D" stroke-width="4" rx="78"/>
-  <path d="M256,120c53,0,96,43,96,96s-43,96-96,96s-96-43-96-96S203,120,256,120z M256,280c35.3,0,64-28.7,64-64 s-28.7-64-64-64s-64,28.7-64,64S220.7,280,256,280z M340,140c-20-30-60-40-90-20s-40,60-20,90s60,40,90,20S360,170,340,140z M300,180 c-15-20-45-25-65-10s-25,45-10,65s45,25,65,10S315,200,300,180z" fill="url(#accent)" transform="scale(1.2) translate(-36, -36)"/>
+
+  <!-- Base App Background with Premium Rounded Squircle -->
+  <rect width="512" height="512" rx="116" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle Glass Border -->
+  <rect x="6" y="6" width="500" height="500" rx="110" fill="none" stroke="#2A3B42" stroke-width="3" opacity="0.6"/>
+
+  <!-- Ambient Light Orb behind the icon -->
+  <circle cx="256" cy="256" r="140" fill="url(#glowGrad)" filter="url(#softGlow)"/>
+
+  <!-- Outer Sound Orbit Rings -->
+  <circle cx="256" cy="256" r="185" fill="none" stroke="#00F59B" stroke-width="1.5" stroke-dasharray="6,12" opacity="0.25"/>
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#00D2FF" stroke-width="1.5" opacity="0.15"/>
+
+  <!-- Main Iconic Sonic 'S' Wave (Fluid Ribbon) -->
+  <g filter="url(#neonGlow)">
+    <!-- Top Arc of S -->
+    <path d="M 330 155 C 330 115, 290 90, 240 90 C 175 90, 140 135, 140 185 C 140 245, 205 270, 270 290 C 335 310, 372 340, 372 395 C 372 455, 315 485, 245 485 C 175 485, 135 445, 135 405" 
+          fill="none" 
+          stroke="url(#sonicGrad)" 
+          stroke-width="38" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+
+    <!-- Inner Core Highlight Stream -->
+    <path d="M 325 155 C 325 125, 290 106, 240 106 C 185 106, 156 142, 156 185 C 156 235, 215 258, 275 278 C 340 300, 356 332, 356 395 C 356 440, 310 468, 245 468 C 190 468, 150 435, 150 405" 
+          fill="none" 
+          stroke="#FFFFFF" 
+          stroke-width="10" 
+          stroke-linecap="round" 
+          opacity="0.85"/>
+
+    <!-- Soundwave Equalizer Bars across the center intersection -->
+    <line x1="210" y1="265" x2="210" y2="295" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
+    <line x1="230" y1="250" x2="230" y2="310" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round"/>
+    <line x1="250" y1="235" x2="250" y2="325" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+    <line x1="270" y1="245" x2="270" y2="315" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round"/>
+    <line x1="290" y1="260" x2="290" y2="300" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
+  </g>
 </svg>

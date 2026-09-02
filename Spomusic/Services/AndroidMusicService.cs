@@ -992,7 +992,16 @@ namespace Spomusic.Services
 
         private void ResumeCore(bool fromAudioInterruption)
         {
-            if (_mediaPlayer == null || _mediaPlayer.IsPlaying)
+            if (_mediaPlayer != null && _mediaPlayer.IsPlaying)
+                return;
+
+            if (_mediaPlayer == null && CurrentSong != null)
+            {
+                Play(CurrentSong);
+                return;
+            }
+
+            if (_mediaPlayer == null)
                 return;
 
             _manualPauseRequested = false;

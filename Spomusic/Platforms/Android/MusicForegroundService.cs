@@ -57,7 +57,12 @@ namespace Spomusic.Platforms.Android
         {
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
             {
-                var channel = new NotificationChannel(ChannelId, "Spomusic Playback", NotificationImportance.Low);
+                var channel = new NotificationChannel(ChannelId, "Spomusic Playback", NotificationImportance.Low)
+                {
+                    Description = "Controles de reproducción y pantalla de bloqueo"
+                };
+                channel.SetShowBadge(false);
+                channel.LockscreenVisibility = NotificationVisibility.Public;
                 var manager = (NotificationManager)GetSystemService(NotificationService)!;
                 manager?.CreateNotificationChannel(channel);
             }
@@ -71,78 +76,104 @@ namespace Spomusic.Platforms.Android
                 var musicService = IPlatformApplication.Current.Services.GetService<IMusicService>();
                 switch (action)
                 {
-                    case ActionPlay: musicService?.Resume(); break;
-                    case ActionPause: musicService?.Pause(); break;
-                    case ActionNext: musicService?.Next(); break;
-                    case ActionPrev: musicService?.Previous(); break;
+                    case ActionPlay:
+                        musicService?.Resume();
+                        return StartCommandResult.Sticky;
+                    case ActionPause:
+                        musicService?.Pause();
+                        return StartCommandResult.Sticky;
+                    case ActionNext:
+                        musicService?.Next();
+                        return StartCommandResult.Sticky;
+                    case ActionPrev:
+                        musicService?.Previous();
+                        return StartCommandResult.Sticky;
                     case ActionStop:
-                        musicService?.Stop();
-                        StopForeground(StopForegroundFlags.Remove);
-                        StopSelf();
-                        return StartCommandResult.NotSticky;
                     case ActionClose:
                         musicService?.Stop();
-                        StopForeground(StopForegroundFlags.Remove);
+                        if (Build.VERSION.SdkInt >= BuildVersionCodes.N)
+                            StopForeground(StopForegroundFlags.Remove);
+                        else
+#pragma warning disable CS0618
+                            StopForeground(true);
+#pragma warning restore CS0618
                         StopSelf();
                         return StartCommandResult.NotSticky;
                 }
             }
 
             var title = intent?.GetStringExtra("title") ?? "Spomusic";
-            var artist = intent?.GetStringExtra("artist") ?? "Escuchando ahora";
+            var artist = intent?.GetStringExtra("artist") ?? "Reproduciendo música";
             var isPlaying = intent?.GetBooleanExtra("isPlaying", true) ?? true;
             var albumArtBytes = intent?.GetByteArrayExtra("albumArt");
             var durationMs = intent?.GetLongExtra("durationMs", 0) ?? 0;
             var positionMs = intent?.GetLongExtra("positionMs", 0) ?? 0;
 
-            // Intent to open the app when tapping the notification
             var mainIntent = new Intent(this, typeof(MainActivity));
             mainIntent.AddFlags(ActivityFlags.ClearTop | ActivityFlags.SingleTop);
-            var pendingMainIntent = PendingIntent.GetActivity(this, 0, mainIntent, PendingIntentFlags.Immutable);
+            var pendingMainIntent = PendingIntent.GetActivity(this, 0, mainIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
             _mediaSession?.SetSessionActivity(pendingMainIntent);
 
-            // Lock-screen controls depend on a live media session with current
-            // metadata and playback state, not just on a foreground notification.
             UpdateMediaSession(title, artist, albumArtBytes, durationMs, positionMs, isPlaying);
 
             var builder = new NotificationCompat.Builder(this, ChannelId)
                 .SetContentTitle(title)
                 .SetContentText(artist)
                 .SetSmallIcon(isPlaying
-                    ? global::Android.Resource.Drawable.IcMediaPause
-                    : global::Android.Resource.Drawable.IcMediaPlay)
+                    ? global::Android.Resource.Drawable.IcMediaPlay
+                    : global::Android.Resource.Drawable.IcMediaPause)
                 .SetContentIntent(pendingMainIntent)
                 .SetOngoing(isPlaying)
                 .SetOnlyAlertOnce(true)
+                .SetShowWhen(false)
                 .SetCategory(NotificationCompat.CategoryTransport)
                 .SetVisibility(NotificationCompat.VisibilityPublic)
+                .SetPriority(NotificationCompat.PriorityLow)
                 .SetStyle(new AndroidX.Media.App.NotificationCompat.MediaStyle()
                     .SetMediaSession(_mediaSession?.SessionToken)
-                    .SetShowActionsInCompactView(0, 1, 2, 3));
+                    .SetShowActionsInCompactView(0, 1, 2));
 
             if (albumArtBytes != null)
             {
-                Bitmap bitmap = BitmapFactory.DecodeByteArray(albumArtBytes, 0, albumArtBytes.Length);
-                builder.SetLargeIcon(bitmap);
+                try
+                {
+                    Bitmap bitmap = BitmapFactory.DecodeByteArray(albumArtBytes, 0, albumArtBytes.Length);
+                    if (bitmap != null)
+                        builder.SetLargeIcon(bitmap);
+                }
+                catch { }
             }
 
-            // Prev Action
-            builder.AddAction(global::Android.Resource.Drawable.IcMediaPrevious, "Prev", GetPendingIntent(ActionPrev));
-            
-            // Play/Pause Action
+            // Prev Action (index 0)
+            builder.AddAction(global::Android.Resource.Drawable.IcMediaPrevious, "Anterior", GetPendingIntent(ActionPrev));
+
+            // Play/Pause Action (index 1)
             if (isPlaying)
-                builder.AddAction(global::Android.Resource.Drawable.IcMediaPause, "Pause", GetPendingIntent(ActionPause));
+                builder.AddAction(global::Android.Resource.Drawable.IcMediaPause, "Pausa", GetPendingIntent(ActionPause));
             else
-                builder.AddAction(global::Android.Resource.Drawable.IcMediaPlay, "Play", GetPendingIntent(ActionPlay));
+                builder.AddAction(global::Android.Resource.Drawable.IcMediaPlay, "Reproducir", GetPendingIntent(ActionPlay));
 
-            // Next Action
-            builder.AddAction(global::Android.Resource.Drawable.IcMediaNext, "Next", GetPendingIntent(ActionNext));
+            // Next Action (index 2)
+            builder.AddAction(global::Android.Resource.Drawable.IcMediaNext, "Siguiente", GetPendingIntent(ActionNext));
 
-            // Close Action
+            // Close Action (index 3)
             builder.AddAction(global::Android.Resource.Drawable.IcMenuCloseClearCancel, "Cerrar", GetPendingIntent(ActionClose));
 
             var notification = builder.Build();
-            StartForeground(NotificationId, notification);
+
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+            {
+                StartForeground(NotificationId, notification, global::Android.Content.PM.ForegroundService.TypeMediaPlayback);
+            }
+            else
+            {
+                StartForeground(NotificationId, notification);
+            }
+
+            if (!isPlaying && Build.VERSION.SdkInt >= BuildVersionCodes.N)
+            {
+                StopForeground(StopForegroundFlags.Detach);
+            }
 
             return StartCommandResult.Sticky;
         }
@@ -151,7 +182,7 @@ namespace Spomusic.Platforms.Android
         {
             var intent = new Intent(this, typeof(MusicForegroundService));
             intent.SetAction(action);
-            return PendingIntent.GetService(this, action.GetHashCode(), intent, PendingIntentFlags.Immutable);
+            return PendingIntent.GetService(this, action.GetHashCode(), intent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
         }
 
         private void UpdateMediaSession(string title, string artist, byte[]? albumArtBytes, long durationMs, long positionMs, bool isPlaying)
@@ -190,6 +221,30 @@ namespace Spomusic.Platforms.Android
                 .Build();
 
             _mediaSession.SetPlaybackState(playbackState);
+        }
+
+        public override void OnTaskRemoved(Intent? rootIntent)
+        {
+            base.OnTaskRemoved(rootIntent);
+            try
+            {
+                var musicService = IPlatformApplication.Current?.Services?.GetService<IMusicService>();
+                musicService?.Stop();
+            }
+            catch { }
+
+            try
+            {
+                if (Build.VERSION.SdkInt >= BuildVersionCodes.N)
+                    StopForeground(StopForegroundFlags.Remove);
+                else
+#pragma warning disable CS0618
+                    StopForeground(true);
+#pragma warning restore CS0618
+            }
+            catch { }
+
+            StopSelf();
         }
 
         public override void OnDestroy()

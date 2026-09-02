@@ -246,8 +246,8 @@ namespace Spomusic
             FullPlayerTitleLabel.FontSize = compactPhone ? 22 : 26;
             FullPlayerArtistLabel.FontSize = compactPhone ? 16 : 18;
 
-            DiscoverPanel.WidthRequest = sidePanelWidth;
-            QueuePanel.WidthRequest = sidePanelWidth;
+            DiscoverPanel.WidthRequest = -1;
+            QueuePanel.WidthRequest = -1;
             _libraryHeroCollapsedHeight = compactPhone ? 104 : 118;
 
             if (!_isLibraryHeroCollapsed && HomeLibraryHeroCard.Height > 0)
@@ -430,6 +430,15 @@ namespace Spomusic
                     status = await Permissions.CheckStatusAsync<AudioLibraryPermission>();
                     if (status != PermissionStatus.Granted && requestIfNeeded)
                         status = await Permissions.RequestAsync<AudioLibraryPermission>();
+
+#if ANDROID
+                    if (OperatingSystem.IsAndroidVersionAtLeast(33))
+                    {
+                        var notifStatus = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
+                        if (notifStatus != PermissionStatus.Granted && requestIfNeeded)
+                            await Permissions.RequestAsync<Permissions.PostNotifications>();
+                    }
+#endif
                 }
 
                 var granted = status == PermissionStatus.Granted || DeviceInfo.Platform != DevicePlatform.Android;
